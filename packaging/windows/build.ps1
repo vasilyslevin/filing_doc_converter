@@ -61,14 +61,8 @@ function Invoke-PackageBuild {
 
 Push-Location $RepositoryRoot
 try {
-    Invoke-PackageBuild \
-        -Name "FilingDocumentConverter" \
-        -EntryPoint $GuiEntry \
-        -ConsoleMode "--windowed"
-    Invoke-PackageBuild \
-        -Name "docling-tools" \
-        -EntryPoint $ToolsEntry \
-        -ConsoleMode "--console"
+    Invoke-PackageBuild -Name "FilingDocumentConverter" -EntryPoint $GuiEntry -ConsoleMode "--windowed"
+    Invoke-PackageBuild -Name "docling-tools" -EntryPoint $ToolsEntry -ConsoleMode "--console"
 
     $Distribution = Join-Path $StagingDirectory "FilingDocumentConverter"
     $ToolsDistribution = Join-Path $StagingDirectory "docling-tools"
