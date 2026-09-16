@@ -1,11 +1,12 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QSettings, QThread, Signal
+from PySide6.QtGui import QColor, QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -17,6 +18,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from filing_doc_converter.model_downloader import ModelDownloadWorker
+from filing_doc_converter.model_management import (
+    ModelDirectoryState,
+    load_model_directory,
+    save_model_directory,
+)
 from filing_doc_converter.system_diagnostics import (
     SystemDiagnostics,
     collect_system_diagnostics,
@@ -32,13 +39,20 @@ class SystemCheckDialog(QDialog):
         parent: QWidget | None = None,
         *,
         diagnostics_provider: Callable[[], SystemDiagnostics] = collect_system_diagnostics,
+        settings: QSettings | None = None,
+        model_worker_factory: Callable[[Path], ModelDownloadWorker] = ModelDownloadWorker,
     ) -> None:
         super().__init__(parent)
         self._diagnostics_provider = diagnostics_provider
+        self._settings = settings if settings is not None else QSettings()
+        self._model_worker_factory = model_worker_factory
         self._diagnostics: SystemDiagnostics | None = None
+        self._model_state: ModelDirectoryState | None = None
+        self._download_thread: QThread | None = None
+        self._download_worker: ModelDownloadWorker | None = None
 
         self.setWindowTitle("System Check")
-        self.resize(720, 440)
+        self.resize(760, 560)
 
         self.system_label = QLabel()
         self.system_label.setWordWrap(True)
@@ -61,23 +75,44 @@ class SystemCheckDialog(QDialog):
             self.guidance_label.textInteractionFlags()
         )
 
+        model_group = QGroupBox("Local AI models")
+        self.model_status_label = QLabel()
+        self.model_status_label.setWordWrap(True)
+        self.choose_model_button = QPushButton("Choose Model Folder")
+        self.choose_model_button.clicked.connect(self.choose_model_directory)
+        self.download_model_button = QPushButton("Download Models")
+        self.download_model_button.clicked.connect(self.confirm_model_download)
+        self.cancel_download_button = QPushButton("Cancel Download")
+        self.cancel_download_button.setEnabled(False)
+        self.cancel_download_button.clicked.connect(self.cancel_model_download)
+        model_buttons = QHBoxLayout()
+        model_buttons.addWidget(self.choose_model_button)
+        model_buttons.addWidget(self.download_model_button)
+        model_buttons.addWidget(self.cancel_download_button)
+        model_buttons.addStretch()
+        model_layout = QVBoxLayout()
+        model_layout.addWidget(self.model_status_label)
+        model_layout.addLayout(model_buttons)
+        model_group.setLayout(model_layout)
+
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh)
         self.save_button = QPushButton("Save Report")
         self.save_button.clicked.connect(self.choose_report_path)
-        close_button = QPushButton("Close")
-        close_button.clicked.connect(self.accept)
+        self.close_button = QPushButton("Close")
+        self.close_button.clicked.connect(self.accept)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self.refresh_button)
         buttons.addWidget(self.save_button)
         buttons.addStretch()
-        buttons.addWidget(close_button)
+        buttons.addWidget(self.close_button)
 
         layout = QVBoxLayout()
         layout.addWidget(self.system_label)
         layout.addWidget(self.component_table)
         layout.addWidget(self.guidance_label)
+        layout.addWidget(model_group)
         layout.addLayout(buttons)
         self.setLayout(layout)
 
@@ -86,6 +121,10 @@ class SystemCheckDialog(QDialog):
     @property
     def diagnostics(self) -> SystemDiagnostics | None:
         return self._diagnostics
+
+    @property
+    def model_state(self) -> ModelDirectoryState | None:
+        return self._model_state
 
     def refresh(self) -> None:
         self.refresh_button.setEnabled(False)
@@ -99,7 +138,112 @@ class SystemCheckDialog(QDialog):
 
         self._diagnostics = diagnostics
         self._populate(diagnostics)
+        self.refresh_model_state()
         self.diagnostics_updated.emit(diagnostics)
+
+    def refresh_model_state(self) -> None:
+        state = load_model_directory(self._settings)
+        self._model_state = state
+        status = "Ready for offline conversion" if state.ready else "Models not installed"
+        colour = "#18794e" if state.ready else "#9a6700"
+        source = {
+            "environment": "managed environment setting",
+            "settings": "selected folder",
+            "default": "application default",
+        }.get(state.source, state.source)
+        self.model_status_label.setText(
+            f'<span style="color:{colour}">{status}</span><br>'
+            f"Folder: {state.path}<br>Source: {source}<br>"
+            "Document conversion is designed to use local model files after setup."
+        )
+        managed = state.source == "environment"
+        active = self._download_thread is not None
+        self.choose_model_button.setEnabled(not managed and not active)
+        self.choose_model_button.setToolTip(
+            "The folder is controlled by FILING_DOC_CONVERTER_MODEL_DIR."
+            if managed
+            else ""
+        )
+        self.download_model_button.setEnabled(not active)
+
+    def choose_model_directory(self) -> None:
+        state = self._model_state or load_model_directory(self._settings)
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "Choose local model folder",
+            str(state.path),
+        )
+        if not selected:
+            return
+        save_model_directory(selected, self._settings)
+        self.refresh_model_state()
+
+    def confirm_model_download(self) -> None:
+        state = self._model_state or load_model_directory(self._settings)
+        answer = QMessageBox.question(
+            self,
+            "Download local AI models?",
+            "This setup downloads generic Docling and OCR model files from external model "
+            "hosting services such as Hugging Face or ModelScope. Downloads may be large.\n\n"
+            "No queued document, document filename, extracted text, or output is supplied to "
+            "the downloader. After setup, document conversion is intended to use the local "
+            "model files.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.start_model_download(state.path)
+
+    def start_model_download(self, model_directory: Path) -> None:
+        if self._download_thread is not None:
+            return
+        self._download_thread = QThread(self)
+        self._download_worker = self._model_worker_factory(model_directory)
+        self._download_worker.moveToThread(self._download_thread)
+        self._download_thread.started.connect(self._download_worker.run)
+        self._download_worker.status_changed.connect(self.model_status_label.setText)
+        self._download_worker.completed.connect(self._on_download_completed)
+        self._download_worker.failed.connect(self._on_download_failed)
+        self._download_worker.cancelled.connect(self._on_download_cancelled)
+        self._download_worker.finished.connect(self._download_thread.quit)
+        self._download_worker.finished.connect(self._download_worker.deleteLater)
+        self._download_thread.finished.connect(self._download_thread.deleteLater)
+        self._download_thread.finished.connect(self._clear_download_references)
+        self.choose_model_button.setEnabled(False)
+        self.download_model_button.setEnabled(False)
+        self.cancel_download_button.setEnabled(True)
+        self.close_button.setEnabled(False)
+        self._download_thread.start()
+
+    def cancel_model_download(self) -> None:
+        if self._download_worker is not None:
+            self.cancel_download_button.setEnabled(False)
+            self.model_status_label.setText("Cancelling model download...")
+            self._download_worker.cancel()
+
+    def _on_download_completed(self) -> None:
+        self.refresh_model_state()
+        QMessageBox.information(
+            self,
+            "Model setup complete",
+            "The local model files are ready for offline document conversion.",
+        )
+
+    def _on_download_failed(self, message: str) -> None:
+        QMessageBox.warning(self, "Model download failed", message)
+
+    def _on_download_cancelled(self) -> None:
+        self.model_status_label.setText(
+            "Model download cancelled. Incomplete files will not be treated as ready."
+        )
+
+    def _clear_download_references(self) -> None:
+        self._download_worker = None
+        self._download_thread = None
+        self.cancel_download_button.setEnabled(False)
+        self.close_button.setEnabled(True)
+        self.refresh_model_state()
 
     def _populate(self, diagnostics: SystemDiagnostics) -> None:
         self.system_label.setText(
@@ -152,4 +296,23 @@ class SystemCheckDialog(QDialog):
     def save_report(self, path: Path) -> None:
         if self._diagnostics is None:
             raise RuntimeError("No diagnostic report is available")
-        path.write_text(self._diagnostics.to_text(), encoding="utf-8", newline="\n")
+        state = self._model_state or load_model_directory(self._settings)
+        model_status = "Ready" if state.ready else "Not ready"
+        content = (
+            self._diagnostics.to_text().rstrip()
+            + "\n\nLocal model setup\n"
+            + f"Models: {model_status}\n"
+            + "Offline conversion: Enabled by default\n"
+        )
+        path.write_text(content, encoding="utf-8", newline="\n")
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._download_thread is not None:
+            QMessageBox.information(
+                self,
+                "Model download in progress",
+                "Cancel the model download before closing System Check.",
+            )
+            event.ignore()
+            return
+        super().closeEvent(event)
