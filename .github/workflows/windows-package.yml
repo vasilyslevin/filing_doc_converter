@@ -14,7 +14,7 @@ on:
 jobs:
   package:
     runs-on: windows-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -23,20 +23,6 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-
-      - name: Configure Nuitka cache
-        shell: pwsh
-        run: |
-          "NUITKA_CACHE_DIR=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" |
-            Out-File $env:GITHUB_ENV -Append
-
-      - name: Restore Nuitka cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.NUITKA_CACHE_DIR }}
-          key: nuitka-windows-py312-v1-${{ hashFiles('pyproject.toml', 'packaging/windows/requirements-build.txt') }}
-          restore-keys: |
-            nuitka-windows-py312-v1-
 
       - name: Install application and build dependencies
         shell: pwsh
@@ -58,11 +44,11 @@ jobs:
       - name: Locate distribution
         shell: pwsh
         run: |
-          $Candidates = @(Get-ChildItem build/windows -Directory -Filter "*.dist")
-          if ($Candidates.Count -ne 1) {
-            throw "Expected one Nuitka distribution directory; found $($Candidates.Count)."
+          $Distribution = Join-Path $PWD "build\windows\dist\FilingDocumentConverter"
+          if (-not (Test-Path $Distribution -PathType Container)) {
+            throw "PyInstaller distribution directory was not produced."
           }
-          "DIST_DIR=$($Candidates[0].FullName)" | Out-File $env:GITHUB_ENV -Append
+          "DIST_DIR=$Distribution" | Out-File $env:GITHUB_ENV -Append
 
       - name: Verify package contents
         shell: pwsh

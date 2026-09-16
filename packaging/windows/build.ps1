@@ -11,62 +11,79 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 }
 
+$SourceRoot = Join-Path $RepositoryRoot "src"
 $GuiEntry = Join-Path $PSScriptRoot "FilingDocumentConverter.py"
 $ToolsEntry = Join-Path $PSScriptRoot "docling-tools.py"
+$StagingDirectory = Join-Path $OutputDirectory "dist"
+$WorkDirectory = Join-Path $OutputDirectory "work"
+$SpecDirectory = Join-Path $OutputDirectory "spec"
 
 if (Test-Path $OutputDirectory) {
     Remove-Item $OutputDirectory -Recurse -Force
 }
-New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
+New-Item -ItemType Directory -Path $StagingDirectory -Force | Out-Null
+New-Item -ItemType Directory -Path $WorkDirectory -Force | Out-Null
+New-Item -ItemType Directory -Path $SpecDirectory -Force | Out-Null
 
-$NuitkaArguments = @(
-    "-m", "nuitka",
-    "--mode=standalone",
-    "--enable-plugin=pyside6",
-    "--mingw64",
-    "--module-parameter=torch-disable-jit=yes",
-    "--windows-console-mode=attach",
-    "--assume-yes-for-downloads",
-    "--remove-output",
-    "--output-dir=$OutputDirectory",
-    "--company-name=Filing Document Converter",
-    "--product-name=Filing Document Converter",
-    "--file-description=Local-first filing document conversion",
-    "--file-version=0.1.0.0",
-    "--product-version=0.1.0.0",
-    "--include-package=filing_doc_converter",
-    "--include-module=docling.cli.tools",
-    "--include-module=docling.document_converter",
-    "--include-package-data=docling",
-    "--include-package-data=docling_core",
-    "--include-package-data=docling_parse",
-    "--main=$GuiEntry",
-    "--main=$ToolsEntry"
+$CommonArguments = @(
+    "-m", "PyInstaller",
+    "--noconfirm",
+    "--clean",
+    "--onedir",
+    "--paths=$SourceRoot",
+    "--distpath=$StagingDirectory",
+    "--specpath=$SpecDirectory",
+    "--collect-all=docling",
+    "--collect-all=docling_core",
+    "--collect-all=docling_parse",
+    "--hidden-import=docling.cli.tools",
+    "--hidden-import=docling.document_converter"
 )
+
+function Invoke-PackageBuild {
+    param(
+        [string]$Name,
+        [string]$EntryPoint,
+        [string]$ConsoleMode
+    )
+
+    $Arguments = $CommonArguments + @(
+        "--workpath=$(Join-Path $WorkDirectory $Name)",
+        "--name=$Name",
+        $ConsoleMode,
+        $EntryPoint
+    )
+    & $Python @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "PyInstaller failed for $Name with exit code $LASTEXITCODE."
+    }
+}
 
 Push-Location $RepositoryRoot
 try {
-    & $Python @NuitkaArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "Nuitka failed with exit code $LASTEXITCODE."
-    }
+    Invoke-PackageBuild \
+        -Name "FilingDocumentConverter" \
+        -EntryPoint $GuiEntry \
+        -ConsoleMode "--windowed"
+    Invoke-PackageBuild \
+        -Name "docling-tools" \
+        -EntryPoint $ToolsEntry \
+        -ConsoleMode "--console"
 
-    $Distribution = Join-Path $OutputDirectory "FilingDocumentConverter.dist"
-    if (-not (Test-Path $Distribution -PathType Container)) {
-        $Candidates = @(Get-ChildItem $OutputDirectory -Directory -Filter "*.dist")
-        if ($Candidates.Count -ne 1) {
-            throw "Could not identify the Nuitka distribution directory."
-        }
-        $Distribution = $Candidates[0].FullName
-    }
-
+    $Distribution = Join-Path $StagingDirectory "FilingDocumentConverter"
+    $ToolsDistribution = Join-Path $StagingDirectory "docling-tools"
     $GuiExecutable = Join-Path $Distribution "FilingDocumentConverter.exe"
+    $ToolsExecutable = Join-Path $ToolsDistribution "docling-tools.exe"
+
     if (-not (Test-Path $GuiExecutable -PathType Leaf)) {
         throw "FilingDocumentConverter.exe was not produced."
     }
+    if (-not (Test-Path $ToolsExecutable -PathType Leaf)) {
+        throw "docling-tools.exe was not produced."
+    }
 
-    $ToolsExecutable = Join-Path $Distribution "docling-tools.exe"
-    Copy-Item $GuiExecutable $ToolsExecutable -Force
+    Copy-Item (Join-Path $ToolsDistribution "*") $Distribution -Recurse -Force
+    Remove-Item $ToolsDistribution -Recurse -Force
     Copy-Item (Join-Path $RepositoryRoot "LICENSE") $Distribution -Force
     Copy-Item (Join-Path $RepositoryRoot "THIRD_PARTY_NOTICES.md") $Distribution -Force
     Copy-Item (Join-Path $PSScriptRoot "PACKAGING_NOTES.txt") $Distribution -Force
