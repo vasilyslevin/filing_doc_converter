@@ -25,11 +25,15 @@ def test_searchable_output_path() -> None:
 
 
 def test_markdown_output_path() -> None:
-    assert markdown_output_path(Path("filing.pdf"), Path("Converted")) == Path("Converted/filing.md")
+    assert markdown_output_path(Path("filing.pdf"), Path("Converted")) == Path(
+        "Converted/filing.md"
+    )
 
 
 def test_json_output_path() -> None:
-    assert json_output_path(Path("filing.pdf"), Path("Converted")) == Path("Converted/filing.json")
+    assert json_output_path(Path("filing.pdf"), Path("Converted")) == Path(
+        "Converted/filing.json"
+    )
 
 
 def test_build_ocr_command_uses_safe_argument_list() -> None:
@@ -51,7 +55,7 @@ def test_build_ocr_command_uses_safe_argument_list() -> None:
         "--language",
         "eng",
         "filing with spaces.pdf",
-        "Converted/filing with spaces.searchable.pdf",
+        str(Path("Converted") / "filing with spaces.searchable.pdf"),
     ]
 
 
@@ -83,9 +87,18 @@ def test_existing_output_is_not_overwritten(tmp_path: Path) -> None:
     assert destination.read_bytes() == b"existing"
 
 
-def test_docling_dependency_missing_is_reported(tmp_path: Path) -> None:
+def test_docling_dependency_missing_is_reported(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "filing.pdf"
     source.write_bytes(b"%PDF-1.4\n")
+
+    def raise_missing_dependency():
+        raise DoclingUnavailableError("Docling was not found")
+
+    monkeypatch.setattr(
+        ocr_pipeline,
+        "_load_docling_converter_class",
+        raise_missing_dependency,
+    )
 
     with pytest.raises(DoclingUnavailableError, match="Docling was not found"):
         run_docling(
