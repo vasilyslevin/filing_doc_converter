@@ -24,7 +24,7 @@ Original PDF
     +-- Combined ---------------> searchable PDF, then Markdown/JSON
 ```
 
-When OCR and Docling are selected together, Docling reads the newly created searchable PDF. When only Markdown or JSON is selected, Docling reads the original PDF directly.
+When OCR and Docling are selected together, Docling reads the newly created searchable PDF while Markdown and JSON retain the original input stem. When only Markdown or JSON is selected, Docling reads the original PDF directly.
 
 ## Current scope
 
@@ -42,31 +42,41 @@ When OCR and Docling are selected together, Docling reads the newly created sear
 - Open the output directory in the native file manager.
 - Check local dependency availability and versions.
 - Save privacy-safe diagnostic reports.
+- Select and persist a local model directory.
+- Download generic model artifacts only after explicit consent.
+- Refuse Docling conversion when local model setup is incomplete.
+- Configure Docling for local artifacts with remote services disabled.
 
 ## Design principles
 
-1. Local processing by default.
+1. Local document processing by default.
 2. No telemetry, cloud uploads, or automatic document transmission.
-3. Never modify an original filing.
-4. Never silently overwrite an existing output.
-5. Preserve PDF-page boundaries for source verification.
-6. Keep the interface understandable without technical knowledge.
-7. Keep processing logic separate from the graphical interface.
-8. Test Windows, macOS, and Linux behavior.
-9. Treat optional dependencies and model licenses explicitly.
-10. Prefer a small reliable application over a broad document-management suite.
+3. Separate model setup network activity from document processing.
+4. Never modify an original filing.
+5. Never silently overwrite an existing output.
+6. Preserve PDF-page boundaries for source verification.
+7. Keep the interface understandable without technical knowledge.
+8. Keep processing logic separate from the graphical interface.
+9. Test Windows, macOS, and Linux behavior.
+10. Treat optional dependencies and model licenses explicitly.
+11. Prefer a small reliable application over a broad document-management suite.
+12. Describe privacy controls accurately without claiming that application code replaces an operating-system firewall.
 
 ## Architecture
 
 ```text
 src/filing_doc_converter/
-├── app.py                    Application entry point
+├── app.py                    Application entry point and application identity
 ├── application_window.py     Environment-aware window features
 ├── main_window.py            Document queue and processing interface
+├── model_management.py       Model directory settings and readiness
+├── model_downloader.py       Background model setup and cancellation
+├── docling_runtime.py        Local-only Docling configuration
 ├── ocr_pipeline.py           OCRmyPDF and Docling processing functions
 ├── ocr_worker.py             Background routing and cancellation
+├── privacy_notice.py         Versioned first-run privacy explanation
 ├── system_diagnostics.py     Local dependency and version checks
-└── system_check_dialog.py    Graphical diagnostics interface
+└── system_check_dialog.py    Diagnostics and model setup interface
 ```
 
 The current module name `ocr_pipeline.py` predates Docling integration. A later maintenance refactor may separate OCR and Docling code if the module becomes difficult to maintain.
@@ -96,7 +106,7 @@ The current module name `ocr_pipeline.py` predates Docling integration. A later 
 - Background OCR execution and cancellation.
 - Optional Docling Markdown and JSON conversion.
 - Combined OCR-to-Docling routing.
-- Stable output naming.
+- Stable output naming, including multi-dot filenames.
 - Atomic non-overwrite publication and rollback protection.
 
 ### Diagnostics
@@ -109,22 +119,46 @@ The current module name `ocr_pipeline.py` predates Docling integration. A later 
 - Automatic output-option availability.
 - Native output-folder opening.
 
+### Privacy and model setup
+
+- Versioned first-run privacy explanation.
+- User-selected model directory persisted through QSettings.
+- Managed model-directory environment override.
+- Explicit consent before model downloads.
+- Background download with cancellation.
+- Successful-download readiness marker.
+- Incomplete model directories rejected.
+- Local Docling artifacts path.
+- Remote Docling services explicitly disabled.
+- External Docling plugins disabled.
+- Supported offline-library controls scoped to conversion.
+- Markdown and JSON disabled when models are not ready.
+- Saved diagnostic reports omit model and document paths.
+
+### Validation completed
+
+- Automated tests on Windows, macOS, and Ubuntu.
+- Native Windows dependency and GUI launch test.
+- Successful processing of a badly scanned 50 MB, 38-page PDF.
+- Searchable PDF, Markdown, and JSON validation.
+- Combined-output filename regression testing.
+
+## Immediate validation
+
+Before merging the privacy and model-management milestone:
+
+- Verify `docling-tools models download -o` with the installed Docling version.
+- Select a dedicated model directory through System Check.
+- Confirm the consent dialog appears before downloading.
+- Confirm cancellation leaves the directory not ready.
+- Confirm a successful download marks the directory ready.
+- Disconnect networking or apply an outbound firewall rule.
+- Convert a digital PDF into Markdown and JSON.
+- Convert a scanned PDF into searchable PDF, Markdown, and JSON.
+- Confirm no model download or remote service is attempted during conversion.
+- Confirm expected output names, page markers, and content.
+
 ## Next milestones
-
-### End-to-end validation
-
-Test actual conversion rather than mocked integrations using synthetic or public documents:
-
-- Digitally generated judicial opinion.
-- Image-only scanned filing.
-- Mixed digital and scanned PDF.
-- Multicolumn document.
-- Document containing tables and footnotes.
-- Several-hundred-page record.
-- Password-protected and intentionally damaged PDFs.
-- Filenames containing spaces and Unicode characters.
-
-Verify output text, page markers, filenames, cancellation, retries, rollback, and memory use.
 
 ### Processing reports
 
@@ -138,15 +172,23 @@ Generate a local manifest containing:
 - Success, warning, cancellation, or failure status.
 - No document content or remote transmission.
 
-### Packaging
+### Windows packaging
 
-- Produce a Windows installer.
+- Produce a folder-based Windows application build first.
+- Evaluate Qt's supported deployment tooling and the project's native dependencies.
+- Decide whether OCRmyPDF and Tesseract are bundled or prerequisites.
+- Decide whether model artifacts are bundled, downloaded during explicit setup, or supplied separately.
+- Create a Windows installer after the folder build passes.
+- Test installation, launch, conversion, cancellation, repair, and uninstall on a clean Windows account or virtual machine.
+- Sign the installer when a suitable code-signing process is available.
+- Generate an SBOM and release-specific third-party notices.
+
+### macOS packaging
+
 - Produce a signed and notarized macOS application.
 - Test Intel and Apple Silicon behavior as available.
-- Decide which dependencies are bundled and which are prerequisites.
-- Generate an SBOM and complete third-party notices for each release.
+- Verify local model storage and offline conversion.
 - Provide an uninstall procedure.
-- Keep automatic updates disabled unless a secure update process is later designed.
 
 ### Initial release
 
@@ -177,4 +219,4 @@ These features should be considered only after the conversion workflow is stable
 
 ## Success criteria
 
-The project succeeds when a nontechnical user can drag in a legal PDF, select the desired outputs, process it locally, open the results, and verify an AI-generated statement against the correct PDF page without using a terminal.
+The project succeeds when a nontechnical user can install the application, complete model setup with informed consent, disconnect networking, convert a legal PDF locally, open the results, and verify an AI-generated statement against the correct PDF page without using a terminal.
