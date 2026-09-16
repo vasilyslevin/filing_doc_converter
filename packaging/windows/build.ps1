@@ -23,7 +23,6 @@ $NuitkaArguments = @(
     "-m", "nuitka",
     "--mode=standalone",
     "--enable-plugin=pyside6",
-    "--enable-plugin=dill-compat",
     "--mingw64",
     "--module-parameter=torch-disable-jit=yes",
     "--windows-console-mode=attach",
