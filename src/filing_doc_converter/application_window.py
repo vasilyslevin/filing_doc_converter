@@ -6,6 +6,10 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox, QPushButton
 
 from filing_doc_converter.main_window import MainWindow
+from filing_doc_converter.model_management import (
+    ModelDirectoryState,
+    load_model_directory,
+)
 from filing_doc_converter.system_check_dialog import SystemCheckDialog
 from filing_doc_converter.system_diagnostics import (
     OutputAvailability,
@@ -19,8 +23,10 @@ class ApplicationWindow(MainWindow):
         self,
         *,
         availability_provider: Callable[[], OutputAvailability] = check_output_availability,
+        model_state_provider: Callable[[], ModelDirectoryState] = load_model_directory,
     ) -> None:
         self._availability_provider = availability_provider
+        self._model_state_provider = model_state_provider
         super().__init__()
 
         help_menu = self.menuBar().addMenu("Help")
@@ -57,7 +63,10 @@ class ApplicationWindow(MainWindow):
             checkbox.setEnabled(availability.docling)
             if not availability.docling:
                 checkbox.setChecked(False)
-                checkbox.setToolTip("Markdown and JSON output require Docling.")
+                checkbox.setToolTip(
+                    availability.docling_reason
+                    or "Markdown and JSON require Docling and downloaded local models."
+                )
             else:
                 checkbox.setToolTip("")
 
@@ -67,10 +76,20 @@ class ApplicationWindow(MainWindow):
         ocrmypdf = diagnostics.component("ocrmypdf")
         tesseract = diagnostics.component("tesseract")
         docling = diagnostics.component("docling")
+        model_state = self._model_state_provider()
+        reason = None
+        if not docling.available:
+            reason = "Docling is not installed. Open Help > System Check for setup guidance."
+        elif not model_state.ready:
+            reason = (
+                "Local Docling models are not ready. "
+                "Open Help > System Check and download models."
+            )
         self.apply_output_availability(
             OutputAvailability(
                 searchable_pdf=ocrmypdf.available and tesseract.available,
-                docling=docling.available,
+                docling=docling.available and model_state.ready,
+                docling_reason=reason,
             )
         )
 
@@ -78,8 +97,7 @@ class ApplicationWindow(MainWindow):
         dialog = SystemCheckDialog(self)
         dialog.diagnostics_updated.connect(self.apply_diagnostics)
         dialog.exec()
-        if dialog.diagnostics is not None:
-            self.apply_diagnostics(dialog.diagnostics)
+        self.refresh_output_availability()
 
     def open_output_directory(self) -> None:
         output_directory = self.output_directory
