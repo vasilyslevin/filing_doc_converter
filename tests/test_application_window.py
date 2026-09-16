@@ -78,7 +78,7 @@ def test_open_output_folder_uses_desktop_services(monkeypatch, qtbot, tmp_path: 
 
     assert window.open_output_button.isEnabled()
     assert len(opened_urls) == 1
-    assert opened_urls[0].toLocalFile() == str(tmp_path.resolve())
+    assert Path(opened_urls[0].toLocalFile()) == tmp_path.resolve()
 
 
 def test_open_output_button_waits_for_existing_folder(qtbot, tmp_path: Path) -> None:
