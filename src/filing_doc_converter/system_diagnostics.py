@@ -6,6 +6,7 @@ import subprocess
 from dataclasses import dataclass
 
 from filing_doc_converter import __version__
+from filing_doc_converter.model_management import load_model_directory
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class ComponentStatus:
 class OutputAvailability:
     searchable_pdf: bool
     docling: bool
+    docling_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -101,10 +103,18 @@ def _python_package_available(package: str) -> bool:
 
 
 def check_output_availability() -> OutputAvailability:
+    docling_installed = _python_package_available("docling")
+    models_ready = load_model_directory().ready if docling_installed else False
+    reason = None
+    if not docling_installed:
+        reason = "Docling is not installed. Open Help > System Check for setup guidance."
+    elif not models_ready:
+        reason = "Local Docling models are not ready. Open Help > System Check and download models."
     return OutputAvailability(
         searchable_pdf=shutil.which("ocrmypdf") is not None
         and shutil.which("tesseract") is not None,
-        docling=_python_package_available("docling"),
+        docling=docling_installed and models_ready,
+        docling_reason=reason,
     )
 
 

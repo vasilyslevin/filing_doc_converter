@@ -14,16 +14,19 @@ Filing Document Converter is a local-first desktop application for converting le
 - Original-file and existing-output protection.
 - Stable output names and PDF page-break markers.
 - System Check dialog with component versions and OCR languages.
+- Explicit local-model setup and download consent.
+- Configurable local model directory.
+- Offline-by-default Docling conversion using prefetched artifacts.
 - Automatic disabling of unavailable output options.
 - Privacy-safe diagnostic reports.
 - Native Open Output Folder action.
-- Local processing without telemetry or cloud uploads.
+- No application telemetry or automatic document uploads.
 
 ## Status
 
-The application is functional but remains pre-alpha. Use copies of documents and verify all generated material against the original PDF.
+The application is functional but remains pre-alpha. Automated tests run on Windows, macOS, and Ubuntu. Native Windows testing has successfully processed a badly scanned 50 MB, 38-page PDF into searchable PDF, Markdown, and JSON.
 
-Planned work includes end-to-end testing with representative legal documents, processing-report improvements, and signed Windows and macOS packages.
+Use copies of documents and verify all generated material against the original PDF. A native offline smoke test and packaged-application testing remain required before production or court use.
 
 ## Installation
 
@@ -62,27 +65,88 @@ python -m pip install -e ".[docling]"
 
 ### Windows
 
-Install OCRmyPDF and Tesseract according to their official Windows instructions and ensure both executables are available on `PATH`. Then install the application extras:
+Install 64-bit Python, OCRmyPDF, and Tesseract according to their official Windows instructions. Ensure OCRmyPDF and Tesseract are available on `PATH`, then install the application extras:
 
 ```powershell
 python -m pip install -e ".[full]"
 ```
 
-### Linux
+### Linux and WSL
 
 Install OCRmyPDF and Tesseract using the distribution package manager, then install the Docling extra. Package names vary by distribution.
+
+## First launch
+
+The first launch displays a versioned privacy explanation. It states that documents are processed locally, the application has no telemetry or automatic document upload, model downloads require separate approval, and an operating-system firewall remains the strongest enforcement boundary for highly sensitive work.
+
+Acknowledgement is stored locally through `QSettings`. The notice is shown again if its version changes.
+
+## Local model setup
+
+Markdown and JSON require local Docling model artifacts. The application does not download these artifacts during document processing.
+
+1. Open **Help > System Check**.
+2. Select **Choose Model Folder**.
+3. Choose a dedicated directory. On one managed Windows workstation this may be `D:\mdl\filing_doc_converter`; other users may choose a suitable local directory.
+4. Select **Download Models**.
+5. Read the network and privacy explanation.
+6. Approve the download.
+7. Wait until System Check reports **Ready for offline conversion**.
+8. Close System Check. Markdown and JSON should become available without restarting the application.
+
+The selected directory is persisted locally. Managed installations can override it before starting the application:
+
+```powershell
+$env:FILING_DOC_CONVERTER_MODEL_DIR = "D:\mdl\filing_doc_converter"
+python -m filing_doc_converter
+```
+
+On Linux or macOS:
+
+```bash
+export FILING_DOC_CONVERTER_MODEL_DIR="$HOME/models/filing_doc_converter"
+python -m filing_doc_converter
+```
+
+The environment override takes precedence over the saved selection. When active, the folder selector is disabled to make the managed configuration clear.
+
+A successful download creates an application readiness marker. A directory containing partial or manually copied files without that marker is not treated as ready.
+
+## Network behavior
+
+The model setup action runs an argument list equivalent to:
+
+```text
+docling-tools models download -o <selected-directory>
+```
+
+It may connect to model-hosting services used by Docling and its OCR dependencies, including Hugging Face or ModelScope. Those services may receive ordinary connection metadata such as IP address, request time, requested model path, and client metadata.
+
+The downloader is not given queued document paths, document filenames, document content, extracted text, or generated outputs. Model setup and document conversion are separate operations.
+
+During document conversion, the application:
+
+- Requires a completed local-model setup.
+- Passes the selected directory as Docling's `artifacts_path`.
+- Sets `enable_remote_services=False`.
+- Disables external Docling plugins.
+- Enables supported offline-library environment controls.
+- Refuses Markdown and JSON conversion when models are not ready.
+
+These controls reduce unintended network access but are not a substitute for operating-system network enforcement. For highly sensitive work, prefetch models, disconnect networking or apply an outbound firewall rule, and then perform an offline smoke test.
 
 ## Using the application
 
 1. Start the application with `python -m filing_doc_converter`.
 2. Open **Help > System Check** and verify the required components.
-3. Drop PDF files or a folder into the application.
-4. Select Searchable PDF, Markdown for AI, Structured JSON, or a combination.
-5. Confirm or change the output folder.
-6. Select **Process Documents**.
-7. Use **Open Output Folder** after processing completes.
+3. Complete local model setup if Markdown or JSON is required.
+4. Drop PDF files or a folder into the application.
+5. Select Searchable PDF, Markdown for AI, Structured JSON, or a combination.
+6. Confirm or change the output folder.
+7. Select **Process Documents**.
+8. Use **Open Output Folder** after processing completes.
 
-Unavailable output formats are disabled automatically. The System Check provides installation guidance and can save a diagnostic report.
+Unavailable output formats are disabled automatically. Searchable PDF depends only on OCRmyPDF and Tesseract. Markdown and JSON require both Docling and completed local model setup.
 
 ## Output files
 
@@ -94,6 +158,8 @@ Converted/
 ├── filing.md
 └── filing.json
 ```
+
+Docling reads `filing.searchable.pdf` during combined processing, but Markdown and JSON retain the original `filing` stem. Multi-dot filenames are also preserved.
 
 Existing output files are not overwritten. If a later stage fails, files created during that unsuccessful attempt are rolled back when safe to do so.
 
@@ -113,33 +179,51 @@ The System Check reports:
 - OCRmyPDF availability and version.
 - Tesseract availability, version, and installed OCR languages.
 - Docling availability and version.
+- Local model readiness.
+- Whether the model directory is selected, default, or managed by an environment setting.
 - Platform-specific installation guidance.
 
-The saved diagnostic report does not intentionally include usernames, hostnames, home-directory paths, queued document paths, output paths, environment variables, or document contents.
+The model path is visible in the interactive dialog so the user can verify it. Saved diagnostic reports include only model readiness and offline-mode status; they do not intentionally include the model path, usernames, hostnames, home-directory paths, queued document paths, output paths, environment variables, or document content.
+
+## Offline smoke test
+
+After model setup:
+
+1. Close and restart the application.
+2. Confirm System Check reports models ready.
+3. Disconnect networking or block outbound access for the application.
+4. Process a nonconfidential digital PDF into Markdown and JSON.
+5. Process a nonconfidential scanned PDF into all three output types.
+6. Confirm no model download starts.
+7. Confirm all outputs are valid and use the expected filenames.
+8. Reconnect networking only after the test is complete.
 
 ## Development
 
-Run the tests with:
+Run tests and lint checks with:
 
 ```bash
 pytest
-```
-
-Run lint checks with:
-
-```bash
 ruff check .
 ```
 
-GitHub Actions runs both commands on Ubuntu, Windows, and macOS. Tests mock optional converters and do not download Docling models or require OCRmyPDF.
+GitHub Actions runs both commands on Ubuntu, Windows, and macOS. Tests mock optional converters and model downloads; CI does not download Docling models or require OCRmyPDF.
+
+## Packaging direction
+
+Windows packaging is the next milestone after PR #4 is merged and the native offline smoke test passes. The initial target is a folder-based build rather than a single-file executable, followed by an installer tested on a clean Windows account or virtual machine.
+
+The packaging work must decide which native tools and model artifacts are bundled versus installed separately, generate an SBOM, include all required third-party notices, and verify uninstall behavior.
 
 ## Privacy and security
 
 - Documents are processed locally.
-- The application does not include telemetry, cloud uploads, or automatic updates.
+- The application does not include telemetry, cloud document uploads, or automatic updates.
+- Model downloads occur only through the explicit setup action after consent.
 - Input PDFs are never overwritten.
 - Output publication rejects existing destinations.
 - Diagnostic reports exclude document and user paths.
+- Application-level offline controls do not replace operating-system firewall enforcement.
 
 ## License
 
