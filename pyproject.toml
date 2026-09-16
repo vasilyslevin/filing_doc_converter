@@ -30,6 +30,13 @@ classifiers = [
 ocr = [
   "ocrmypdf>=17,<18"
 ]
+docling = [
+  "docling>=2,<3"
+]
+full = [
+  "ocrmypdf>=17,<18",
+  "docling>=2,<3"
+]
 dev = [
   "pytest>=8,<9",
   "pytest-qt>=4.4,<5",
