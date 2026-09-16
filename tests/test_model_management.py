@@ -12,6 +12,7 @@ from filing_doc_converter.model_management import (
     load_model_directory,
     mark_models_ready,
     models_ready,
+    resolve_model_downloader,
     save_model_directory,
 )
 
@@ -97,7 +98,48 @@ def test_download_command_is_an_argument_list(tmp_path: Path) -> None:
     assert not any("document" in argument.lower() for argument in command)
 
 
+def test_source_run_resolves_downloader_from_path(monkeypatch) -> None:
+    monkeypatch.setattr(model_management, "is_packaged_application", lambda: False)
+    monkeypatch.setattr(
+        model_management.shutil,
+        "which",
+        lambda executable: "C:/tools/docling-tools.exe",
+    )
+
+    assert resolve_model_downloader() == "C:/tools/docling-tools.exe"
+
+
+def test_packaged_run_resolves_sibling_downloader(monkeypatch, tmp_path: Path) -> None:
+    application = tmp_path / "FilingDocumentConverter.exe"
+    companion = tmp_path / "docling-tools.exe"
+    companion.write_bytes(b"packaged tool")
+    monkeypatch.setattr(model_management, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(model_management.sys, "executable", str(application))
+    monkeypatch.setattr(
+        model_management.shutil,
+        "which",
+        lambda executable: pytest.fail("PATH must not be used for a packaged application"),
+    )
+
+    assert resolve_model_downloader() == str(companion.resolve())
+
+
+def test_packaged_run_fails_closed_without_companion(monkeypatch, tmp_path: Path) -> None:
+    application = tmp_path / "FilingDocumentConverter.exe"
+    monkeypatch.setattr(model_management, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(model_management.sys, "executable", str(application))
+    monkeypatch.setattr(
+        model_management.shutil,
+        "which",
+        lambda executable: pytest.fail("PATH must not be used for a packaged application"),
+    )
+
+    with pytest.raises(ModelManagementError, match="packaged docling-tools.exe companion"):
+        resolve_model_downloader()
+
+
 def test_missing_downloader_is_reported(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(model_management, "is_packaged_application", lambda: False)
     monkeypatch.setattr(model_management.shutil, "which", lambda executable: None)
 
     with pytest.raises(ModelManagementError, match="docling-tools was not found"):
