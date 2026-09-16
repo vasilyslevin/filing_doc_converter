@@ -65,7 +65,7 @@ def test_build_ocr_command_uses_safe_argument_list() -> None:
         "--language",
         "eng",
         "filing with spaces.pdf",
-        "Converted/filing with spaces.searchable.pdf",
+        str(Path("Converted") / "filing with spaces.searchable.pdf"),
     ]
 
 
