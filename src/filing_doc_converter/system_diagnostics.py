@@ -3,7 +3,6 @@ import importlib.util as importlib_util
 import platform
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass
 
 from filing_doc_converter import __version__
