@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from filing_doc_converter.ocr_pipeline import find_ocrmypdf
-from filing_doc_converter.ocr_worker import OcrWorker
+from filing_doc_converter.ocr_worker import ProcessingWorker
 
 
 class PdfDropArea(QLabel):
@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
         self._completed_count = 0
         self._processing_errors: list[str] = []
         self._thread: QThread | None = None
-        self._worker: OcrWorker | None = None
+        self._worker: ProcessingWorker | None = None
 
         self.setWindowTitle("Filing Document Converter")
         self.resize(760, 680)
@@ -108,11 +108,7 @@ class MainWindow(QMainWindow):
         self.searchable_pdf_checkbox = QCheckBox("Searchable PDF")
         self.searchable_pdf_checkbox.setChecked(True)
         self.markdown_checkbox = QCheckBox("Markdown for AI")
-        self.markdown_checkbox.setEnabled(False)
-        self.markdown_checkbox.setToolTip("Docling integration is planned for the next milestone")
         self.json_checkbox = QCheckBox("Structured JSON")
-        self.json_checkbox.setEnabled(False)
-        self.json_checkbox.setToolTip("Docling integration is planned for the next milestone")
         output_types.addWidget(self.searchable_pdf_checkbox)
         output_types.addWidget(self.markdown_checkbox)
         output_types.addWidget(self.json_checkbox)
@@ -134,6 +130,8 @@ class MainWindow(QMainWindow):
         self.cancel_button.clicked.connect(self.cancel_processing)
 
         self.searchable_pdf_checkbox.checkStateChanged.connect(self.update_process_button)
+        self.markdown_checkbox.checkStateChanged.connect(self.update_process_button)
+        self.json_checkbox.checkStateChanged.connect(self.update_process_button)
 
         action_row = QHBoxLayout()
         action_row.addWidget(self.progress_bar)
@@ -224,7 +222,11 @@ class MainWindow(QMainWindow):
         ready = bool(
             self._pdf_paths
             and self._output_directory
-            and self.searchable_pdf_checkbox.isChecked()
+            and (
+                self.searchable_pdf_checkbox.isChecked()
+                or self.markdown_checkbox.isChecked()
+                or self.json_checkbox.isChecked()
+            )
             and not self._processing
         )
         self.process_button.setEnabled(ready)
@@ -232,14 +234,23 @@ class MainWindow(QMainWindow):
     def start_processing(self) -> None:
         if self._processing or self._output_directory is None:
             return
-        executable = find_ocrmypdf()
-        if executable is None:
-            QMessageBox.critical(
-                self,
-                "OCRmyPDF not found",
-                "OCRmyPDF is not installed or is not available on the application PATH.",
-            )
+
+        create_searchable_pdf = self.searchable_pdf_checkbox.isChecked()
+        create_markdown = self.markdown_checkbox.isChecked()
+        create_json = self.json_checkbox.isChecked()
+        if not (create_searchable_pdf or create_markdown or create_json):
             return
+
+        executable: str | None = None
+        if create_searchable_pdf:
+            executable = find_ocrmypdf()
+            if executable is None:
+                QMessageBox.critical(
+                    self,
+                    "OCRmyPDF not found",
+                    "OCRmyPDF is not installed or is not available on the application PATH.",
+                )
+                return
 
         self._processing = True
         self._completed_count = 0
@@ -251,9 +262,12 @@ class MainWindow(QMainWindow):
         self.progress_bar.setFormat("Starting OCR...")
 
         self._thread = QThread(self)
-        self._worker = OcrWorker(
+        self._worker = ProcessingWorker(
             tuple(self._pdf_paths),
             self._output_directory,
+            create_searchable_pdf=create_searchable_pdf,
+            create_markdown=create_markdown,
+            create_json=create_json,
             executable=executable,
         )
         self._worker.moveToThread(self._thread)
@@ -276,7 +290,7 @@ class MainWindow(QMainWindow):
 
     def _on_file_started(self, index: int, total: int, filename: str) -> None:
         self.progress_bar.setFormat(f"Processing {index} of {total}: {filename}")
-        self.statusBar().showMessage(f"Running OCR on {filename}")
+        self.statusBar().showMessage(f"Processing {filename}")
 
     def _on_file_succeeded(self, input_path: str, output_path: str) -> None:
         self._completed_count += 1
@@ -302,18 +316,18 @@ class MainWindow(QMainWindow):
 
         self.progress_bar.setValue(self.progress_bar.maximum())
         self.progress_bar.setFormat(f"Completed: {succeeded} succeeded, {failed} failed")
-        self.statusBar().showMessage("OCR processing complete")
+        self.statusBar().showMessage("Document processing complete")
         if failed:
             QMessageBox.warning(
                 self,
-                "OCR completed with errors",
+                "Processing completed with errors",
                 "Some documents could not be processed. Select a failed item for details.",
             )
         else:
             QMessageBox.information(
                 self,
-                "OCR complete",
-                f"Created {succeeded} searchable PDF file{'s' if succeeded != 1 else ''}.",
+                "Processing complete",
+                f"Processed {succeeded} document{'s' if succeeded != 1 else ''} successfully.",
             )
 
     def _mark_queue_item(self, input_path: Path, succeeded: bool, detail: str) -> None:

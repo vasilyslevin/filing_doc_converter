@@ -2,7 +2,7 @@
 
 > **Work in progress:** This project is under active development and is not ready for production or court use.
 
-Filing Document Converter is a local-first desktop application for converting legal PDF filings into searchable PDFs and AI-readable Markdown.
+Filing Document Converter is a local-first desktop application for converting legal PDF filings into searchable PDFs and AI-readable Markdown/JSON.
 
 ## Initial goals
 
@@ -15,16 +15,16 @@ Filing Document Converter is a local-first desktop application for converting le
 
 ## Status
 
-The repository currently contains the application scaffold only. OCR and document-conversion features will be added incrementally with tests.
+Current implementation is still **WIP**. It supports queueing PDFs and processing each file into:
+
+- Searchable PDF (via optional OCRmyPDF dependency)
+- Markdown and/or structured JSON (via optional Docling dependency)
 
 ## Planned milestones
 
-1. Establish the cross-platform application and test structure.
-2. Add drag-and-drop document selection and a processing queue.
-3. Integrate OCRmyPDF for searchable-PDF output.
-4. Integrate Docling for Markdown and JSON output.
-5. Add page-reference preservation and processing reports.
-6. Build and test Windows and macOS packages.
+1. Add page-reference preservation details to generated outputs.
+2. Improve processing reports and UX polish.
+3. Build and test Windows and macOS packages.
 
 ## Development
 
@@ -36,6 +36,21 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 python -m filing_doc_converter
 ```
+
+Optional conversion extras:
+
+```bash
+# OCR output only
+python -m pip install -e ".[ocr]"
+
+# Markdown/JSON output only
+python -m pip install -e ".[docling]"
+
+# All optional converters
+python -m pip install -e ".[full]"
+```
+
+If optional extras are missing, the app still launches. Processing will fail only for the selected output types that require unavailable dependencies.
 
 Run the tests with:
 
