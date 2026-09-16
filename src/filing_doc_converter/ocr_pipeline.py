@@ -133,6 +133,7 @@ def run_docling(
     *,
     export_markdown: bool,
     export_json: bool,
+    output_stem: str | None = None,
     cancel_event: Event | None = None,
 ) -> DoclingResult:
     source = input_path.resolve()
@@ -144,12 +145,19 @@ def run_docling(
         raise OcrError("No Docling output format was requested.")
     if cancel_event is not None and cancel_event.is_set():
         raise OcrCancelledError(f"Processing cancelled: {source.name}")
+    if output_stem is not None and (
+        not output_stem or Path(output_stem).name != output_stem
+    ):
+        raise OcrError("Output stem must be a plain filename stem.")
 
     destination_directory = output_directory.resolve()
+    destination_stem = output_stem or source.stem
     markdown_destination = (
-        markdown_output_path(source, destination_directory) if export_markdown else None
+        destination_directory / f"{destination_stem}.md" if export_markdown else None
     )
-    json_destination = json_output_path(source, destination_directory) if export_json else None
+    json_destination = (
+        destination_directory / f"{destination_stem}.json" if export_json else None
+    )
 
     for destination in (markdown_destination, json_destination):
         if destination is not None and destination.exists():

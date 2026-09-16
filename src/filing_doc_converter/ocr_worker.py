@@ -72,6 +72,7 @@ class ProcessingWorker(QObject):
                         self._output_directory,
                         export_markdown=self._create_markdown,
                         export_json=self._create_json,
+                        output_stem=input_path.stem,
                         cancel_event=self._cancel_event,
                     )
                     self._append_docling_outputs(success_paths, docling_result)
