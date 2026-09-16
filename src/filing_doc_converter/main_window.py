@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -12,10 +12,14 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
+
+from filing_doc_converter.ocr_pipeline import find_ocrmypdf
+from filing_doc_converter.ocr_worker import OcrWorker
 
 
 class PdfDropArea(QLabel):
@@ -59,78 +63,88 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._pdf_paths: list[Path] = []
         self._output_directory: Path | None = None
+        self._processing = False
+        self._completed_count = 0
+        self._processing_errors: list[str] = []
+        self._thread: QThread | None = None
+        self._worker: OcrWorker | None = None
+
         self.setWindowTitle("Filing Document Converter")
-        self.resize(760, 640)
+        self.resize(760, 680)
 
         self.drop_area = PdfDropArea()
         self.drop_area.paths_dropped.connect(self.add_paths)
-
         self.queue = QListWidget()
         self.queue.setAlternatingRowColors(True)
 
-        add_files = QPushButton("Add PDFs")
-        add_files.clicked.connect(self.choose_files)
-        add_folder = QPushButton("Add Folder")
-        add_folder.clicked.connect(self.choose_folder)
-        remove_selected = QPushButton("Remove Selected")
-        remove_selected.clicked.connect(self.remove_selected)
-        clear_queue = QPushButton("Clear")
-        clear_queue.clicked.connect(self.clear_queue)
+        self.add_files_button = QPushButton("Add PDFs")
+        self.add_files_button.clicked.connect(self.choose_files)
+        self.add_folder_button = QPushButton("Add Folder")
+        self.add_folder_button.clicked.connect(self.choose_folder)
+        self.remove_button = QPushButton("Remove Selected")
+        self.remove_button.clicked.connect(self.remove_selected)
+        self.clear_button = QPushButton("Clear")
+        self.clear_button.clicked.connect(self.clear_queue)
 
         queue_controls = QHBoxLayout()
-        queue_controls.addWidget(add_files)
-        queue_controls.addWidget(add_folder)
+        queue_controls.addWidget(self.add_files_button)
+        queue_controls.addWidget(self.add_folder_button)
         queue_controls.addStretch()
-        queue_controls.addWidget(remove_selected)
-        queue_controls.addWidget(clear_queue)
+        queue_controls.addWidget(self.remove_button)
+        queue_controls.addWidget(self.clear_button)
 
-        output_group = QGroupBox("Output")
+        self.output_group = QGroupBox("Output")
         output_layout = QVBoxLayout()
-
         output_folder_row = QHBoxLayout()
         self.output_path_edit = QLineEdit()
         self.output_path_edit.setReadOnly(True)
         self.output_path_edit.setPlaceholderText("Choose an output folder")
-        choose_output = QPushButton("Choose Folder")
-        choose_output.clicked.connect(self.choose_output_directory)
+        self.choose_output_button = QPushButton("Choose Folder")
+        self.choose_output_button.clicked.connect(self.choose_output_directory)
         output_folder_row.addWidget(self.output_path_edit)
-        output_folder_row.addWidget(choose_output)
+        output_folder_row.addWidget(self.choose_output_button)
 
         output_types = QHBoxLayout()
         self.searchable_pdf_checkbox = QCheckBox("Searchable PDF")
         self.searchable_pdf_checkbox.setChecked(True)
         self.markdown_checkbox = QCheckBox("Markdown for AI")
-        self.markdown_checkbox.setChecked(True)
+        self.markdown_checkbox.setEnabled(False)
+        self.markdown_checkbox.setToolTip("Docling integration is planned for the next milestone")
         self.json_checkbox = QCheckBox("Structured JSON")
+        self.json_checkbox.setEnabled(False)
+        self.json_checkbox.setToolTip("Docling integration is planned for the next milestone")
         output_types.addWidget(self.searchable_pdf_checkbox)
         output_types.addWidget(self.markdown_checkbox)
         output_types.addWidget(self.json_checkbox)
         output_types.addStretch()
-
         output_layout.addLayout(output_folder_row)
         output_layout.addLayout(output_types)
-        output_group.setLayout(output_layout)
+        self.output_group.setLayout(output_layout)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Ready")
 
         self.process_button = QPushButton("Process Documents")
         self.process_button.setEnabled(False)
-        self.process_button.clicked.connect(self.show_processing_placeholder)
+        self.process_button.clicked.connect(self.start_processing)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.clicked.connect(self.cancel_processing)
 
-        for checkbox in (
-            self.searchable_pdf_checkbox,
-            self.markdown_checkbox,
-            self.json_checkbox,
-        ):
-            checkbox.checkStateChanged.connect(self.update_process_button)
+        self.searchable_pdf_checkbox.checkStateChanged.connect(self.update_process_button)
 
         action_row = QHBoxLayout()
-        action_row.addStretch()
+        action_row.addWidget(self.progress_bar)
+        action_row.addWidget(self.cancel_button)
         action_row.addWidget(self.process_button)
 
         layout = QVBoxLayout()
         layout.addWidget(self.drop_area)
         layout.addLayout(queue_controls)
         layout.addWidget(self.queue)
-        layout.addWidget(output_group)
+        layout.addWidget(self.output_group)
         layout.addLayout(action_row)
 
         container = QWidget()
@@ -172,13 +186,12 @@ class MainWindow(QMainWindow):
         for raw_path in paths:
             path = Path(raw_path)
             if path.is_dir():
-                candidates.extend(sorted(path.rglob("*.pdf")))
-                candidates.extend(sorted(path.rglob("*.PDF")))
+                candidates.extend(item for item in path.rglob("*") if item.is_file())
             else:
                 candidates.append(path)
 
         known = {path.resolve() for path in self._pdf_paths}
-        for candidate in candidates:
+        for candidate in sorted(candidates):
             if not candidate.is_file() or candidate.suffix.lower() != ".pdf":
                 continue
             resolved = candidate.resolve()
@@ -208,23 +221,128 @@ class MainWindow(QMainWindow):
         self.update_process_button()
 
     def update_process_button(self) -> None:
-        output_selected = any(
-            checkbox.isChecked()
-            for checkbox in (
-                self.searchable_pdf_checkbox,
-                self.markdown_checkbox,
-                self.json_checkbox,
-            )
+        ready = bool(
+            self._pdf_paths
+            and self._output_directory
+            and self.searchable_pdf_checkbox.isChecked()
+            and not self._processing
         )
-        ready = bool(self._pdf_paths and self._output_directory and output_selected)
         self.process_button.setEnabled(ready)
 
-    def show_processing_placeholder(self) -> None:
-        QMessageBox.information(
-            self,
-            "Processing not implemented",
-            "The document queue is ready. Processing will be added in the next milestone.",
+    def start_processing(self) -> None:
+        if self._processing or self._output_directory is None:
+            return
+        executable = find_ocrmypdf()
+        if executable is None:
+            QMessageBox.critical(
+                self,
+                "OCRmyPDF not found",
+                "OCRmyPDF is not installed or is not available on the application PATH.",
+            )
+            return
+
+        self._processing = True
+        self._completed_count = 0
+        self._processing_errors.clear()
+        self._set_inputs_enabled(False)
+        self.cancel_button.setEnabled(True)
+        self.progress_bar.setRange(0, len(self._pdf_paths))
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Starting OCR...")
+
+        self._thread = QThread(self)
+        self._worker = OcrWorker(
+            tuple(self._pdf_paths),
+            self._output_directory,
+            executable=executable,
         )
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.file_started.connect(self._on_file_started)
+        self._worker.file_succeeded.connect(self._on_file_succeeded)
+        self._worker.file_failed.connect(self._on_file_failed)
+        self._worker.finished.connect(self._on_processing_finished)
+        self._worker.finished.connect(self._thread.quit)
+        self._worker.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.finished.connect(self._clear_worker_references)
+        self._thread.start()
+
+    def cancel_processing(self) -> None:
+        if self._worker is not None:
+            self.cancel_button.setEnabled(False)
+            self.progress_bar.setFormat("Cancelling...")
+            self._worker.cancel()
+
+    def _on_file_started(self, index: int, total: int, filename: str) -> None:
+        self.progress_bar.setFormat(f"Processing {index} of {total}: {filename}")
+        self.statusBar().showMessage(f"Running OCR on {filename}")
+
+    def _on_file_succeeded(self, input_path: str, output_path: str) -> None:
+        self._completed_count += 1
+        self.progress_bar.setValue(self._completed_count)
+        self._mark_queue_item(Path(input_path), True, output_path)
+
+    def _on_file_failed(self, input_path: str, error: str) -> None:
+        self._completed_count += 1
+        self.progress_bar.setValue(self._completed_count)
+        self._processing_errors.append(error)
+        self._mark_queue_item(Path(input_path), False, error)
+
+    def _on_processing_finished(self, cancelled: bool, succeeded: int, failed: int) -> None:
+        self._processing = False
+        self.cancel_button.setEnabled(False)
+        self._set_inputs_enabled(True)
+        self.update_process_button()
+
+        if cancelled:
+            self.progress_bar.setFormat("Cancelled")
+            self.statusBar().showMessage("Processing cancelled")
+            return
+
+        self.progress_bar.setValue(self.progress_bar.maximum())
+        self.progress_bar.setFormat(f"Completed: {succeeded} succeeded, {failed} failed")
+        self.statusBar().showMessage("OCR processing complete")
+        if failed:
+            QMessageBox.warning(
+                self,
+                "OCR completed with errors",
+                "Some documents could not be processed. Select a failed item for details.",
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "OCR complete",
+                f"Created {succeeded} searchable PDF file{'s' if succeeded != 1 else ''}.",
+            )
+
+    def _mark_queue_item(self, input_path: Path, succeeded: bool, detail: str) -> None:
+        try:
+            row = self._pdf_paths.index(input_path.resolve())
+        except ValueError:
+            return
+        item = self.queue.item(row)
+        prefix = "Completed" if succeeded else "Failed"
+        item.setText(f"{prefix}: {input_path.name}")
+        item.setToolTip(detail)
+
+    def _set_inputs_enabled(self, enabled: bool) -> None:
+        self.drop_area.setEnabled(enabled)
+        self.queue.setEnabled(enabled)
+        self.output_group.setEnabled(enabled)
+        for button in (
+            self.add_files_button,
+            self.add_folder_button,
+            self.remove_button,
+            self.clear_button,
+        ):
+            button.setEnabled(enabled)
+        if not enabled:
+            self.process_button.setEnabled(False)
+
+    def _clear_worker_references(self) -> None:
+        self._worker = None
+        self._thread = None
 
     def _update_status(self) -> None:
         count = len(self._pdf_paths)

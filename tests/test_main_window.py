@@ -15,9 +15,10 @@ def test_window_launches(qtbot) -> None:
     assert window.windowTitle() == "Filing Document Converter"
     assert window.queue.count() == 0
     assert window.searchable_pdf_checkbox.isChecked()
-    assert window.markdown_checkbox.isChecked()
-    assert not window.json_checkbox.isChecked()
+    assert not window.markdown_checkbox.isEnabled()
+    assert not window.json_checkbox.isEnabled()
     assert not window.process_button.isEnabled()
+    assert not window.cancel_button.isEnabled()
 
 
 def test_adds_only_unique_pdf_files(qtbot, tmp_path: Path) -> None:
@@ -49,19 +50,16 @@ def test_adds_pdfs_from_folder(qtbot, tmp_path: Path) -> None:
     assert window.queue.count() == 2
 
 
-def test_process_requires_an_output_type(qtbot, tmp_path: Path) -> None:
+def test_process_requires_searchable_pdf_selection(qtbot, tmp_path: Path) -> None:
     pdf = make_pdf(tmp_path / "filing.pdf")
     window = MainWindow()
     qtbot.addWidget(window)
     window.add_paths([str(pdf)])
 
     window.searchable_pdf_checkbox.setChecked(False)
-    window.markdown_checkbox.setChecked(False)
-    window.json_checkbox.setChecked(False)
-
     assert not window.process_button.isEnabled()
 
-    window.json_checkbox.setChecked(True)
+    window.searchable_pdf_checkbox.setChecked(True)
     assert window.process_button.isEnabled()
 
 
