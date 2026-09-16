@@ -14,7 +14,7 @@ on:
 jobs:
   package:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,20 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+
+      - name: Configure Nuitka cache
+        shell: pwsh
+        run: |
+          "NUITKA_CACHE_DIR=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" |
+            Out-File $env:GITHUB_ENV -Append
+
+      - name: Restore Nuitka cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUITKA_CACHE_DIR }}
+          key: nuitka-windows-py312-v1-${{ hashFiles('pyproject.toml', 'packaging/windows/requirements-build.txt') }}
+          restore-keys: |
+            nuitka-windows-py312-v1-
 
       - name: Install application and build dependencies
         shell: pwsh
