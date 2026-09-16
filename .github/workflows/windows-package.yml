@@ -76,9 +76,10 @@ jobs:
           TRANSFORMERS_OFFLINE: "1"
           DO_NOT_TRACK: "1"
         run: |
-          & (Join-Path $env:DIST_DIR "FilingDocumentConverter.exe") --package-smoke-test
-          if ($LASTEXITCODE -ne 0) {
-            throw "GUI package smoke test failed with exit code $LASTEXITCODE."
+          $GuiPath = Join-Path $env:DIST_DIR "FilingDocumentConverter.exe"
+          $GuiProcess = Start-Process -FilePath $GuiPath -ArgumentList "--package-smoke-test" -Wait -PassThru
+          if ($GuiProcess.ExitCode -ne 0) {
+            throw "GUI package smoke test failed with exit code $($GuiProcess.ExitCode)."
           }
           & (Join-Path $env:DIST_DIR "docling-tools.exe") --help
           if ($LASTEXITCODE -ne 0) {
