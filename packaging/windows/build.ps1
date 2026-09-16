@@ -82,19 +82,25 @@ try {
     Copy-Item (Join-Path $RepositoryRoot "THIRD_PARTY_NOTICES.md") $Distribution -Force
     Copy-Item (Join-Path $PSScriptRoot "PACKAGING_NOTES.txt") $Distribution -Force
 
-    $HashFile = Join-Path $Distribution "SHA256SUMS.txt"
-    $Hashes = Get-ChildItem $Distribution -File -Recurse |
-        Where-Object { $_.FullName -ne $HashFile } |
-        Sort-Object FullName |
-        ForEach-Object {
-            $RelativePath = [System.IO.Path]::GetRelativePath(
-                $Distribution,
-                $_.FullName
-            ).Replace("\", "/")
-            $Hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$Hash  $RelativePath"
+    $HashTargets = @(
+        "FilingDocumentConverter.exe",
+        "docling-tools.exe",
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "PACKAGING_NOTES.txt"
+    )
+    $Hashes = foreach ($RelativePath in $HashTargets) {
+        $Target = Join-Path $Distribution $RelativePath
+        if (-not (Test-Path $Target -PathType Leaf)) {
+            throw "Cannot hash missing package file: $RelativePath"
         }
-    $Hashes | Set-Content $HashFile -Encoding utf8
+        $Digest = (Get-FileHash -LiteralPath $Target -Algorithm SHA256).Hash
+        if ([string]::IsNullOrWhiteSpace($Digest)) {
+            throw "Could not calculate SHA-256 for package file: $RelativePath"
+        }
+        "$($Digest.ToLowerInvariant())  $RelativePath"
+    }
+    $Hashes | Set-Content (Join-Path $Distribution "SHA256SUMS.txt") -Encoding utf8
 
     Write-Host "Windows development package created at: $Distribution"
 } finally {
