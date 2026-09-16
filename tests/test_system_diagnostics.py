@@ -1,0 +1,118 @@
+import subprocess
+from importlib.machinery import ModuleSpec
+
+from filing_doc_converter import system_diagnostics
+from filing_doc_converter.system_diagnostics import (
+    ComponentStatus,
+    SystemDiagnostics,
+    check_docling,
+    check_ocrmypdf,
+    check_tesseract,
+)
+
+
+def test_ocrmypdf_version_success(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics.shutil, "which", lambda name: "/tools/ocrmypdf")
+    monkeypatch.setattr(
+        system_diagnostics,
+        "_run_command",
+        lambda command: (True, "17.11.0\n", None),
+    )
+
+    result = check_ocrmypdf()
+
+    assert result.available
+    assert result.version == "17.11.0"
+
+
+def test_missing_executable(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics.shutil, "which", lambda name: None)
+
+    result = check_ocrmypdf()
+
+    assert not result.available
+    assert result.error == "Executable not found"
+
+
+def test_command_timeout(monkeypatch) -> None:
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], timeout=5)
+
+    monkeypatch.setattr(system_diagnostics.subprocess, "run", timeout)
+
+    succeeded, output, error = system_diagnostics._run_command(["tool", "--version"])
+
+    assert not succeeded
+    assert output == ""
+    assert error == "Command timed out"
+
+
+def test_tesseract_languages(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics.shutil, "which", lambda name: "/tools/tesseract")
+    responses = iter(
+        [
+            (True, "tesseract 5.5.1\n", None),
+            (True, "List of available languages in data path (2):\neng\nspa\n", None),
+        ]
+    )
+    monkeypatch.setattr(system_diagnostics, "_run_command", lambda command: next(responses))
+
+    result = check_tesseract()
+
+    assert result.available
+    assert result.version == "tesseract 5.5.1"
+    assert result.details == ("Languages: eng, spa",)
+
+
+def test_missing_docling_package(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics.importlib_util, "find_spec", lambda name: None)
+
+    result = check_docling()
+
+    assert not result.available
+    assert result.error == "Package not installed"
+
+
+def test_docling_version_without_importing_models(monkeypatch) -> None:
+    monkeypatch.setattr(
+        system_diagnostics.importlib_util,
+        "find_spec",
+        lambda name: ModuleSpec(name, loader=None),
+    )
+    monkeypatch.setattr(system_diagnostics.importlib_metadata, "version", lambda name: "2.50.0")
+
+    result = check_docling()
+
+    assert result.available
+    assert result.version == "2.50.0"
+
+
+def test_diagnostic_report_contains_no_sensitive_paths() -> None:
+    report = SystemDiagnostics(
+        application_version="0.1.0a0",
+        operating_system="TestOS",
+        operating_system_version="1",
+        architecture="test-arch",
+        python_version="3.12.0",
+        pyside_version="6.9.0",
+        components=(
+            ComponentStatus("ocrmypdf", "OCRmyPDF", True, "17.0.0"),
+            ComponentStatus("tesseract", "Tesseract OCR", True, "5.5.0", ("Languages: eng",)),
+            ComponentStatus("docling", "Docling", False, error="Package not installed"),
+        ),
+    )
+
+    text = report.to_text()
+
+    assert "OCRmyPDF: Available (17.0.0)" in text
+    assert "Docling: Unavailable" in text
+    assert "username" not in text.lower()
+    assert "secret.pdf" not in text
+    assert "/home/" not in text
+    assert "C:\\Users\\" not in text
+
+
+def test_platform_specific_guidance() -> None:
+    assert "Homebrew" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin")
+    assert "PATH" in system_diagnostics.installation_guidance("tesseract", "Windows")
+    assert "package manager" in system_diagnostics.installation_guidance("ocrmypdf", "Linux")
