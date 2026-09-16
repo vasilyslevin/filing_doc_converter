@@ -19,6 +19,12 @@ class ComponentStatus:
 
 
 @dataclass(frozen=True)
+class OutputAvailability:
+    searchable_pdf: bool
+    docling: bool
+
+
+@dataclass(frozen=True)
 class SystemDiagnostics:
     application_version: str
     operating_system: str
@@ -85,6 +91,21 @@ def _first_line(text: str) -> str | None:
         if value:
             return value
     return None
+
+
+def _python_package_available(package: str) -> bool:
+    try:
+        return importlib_util.find_spec(package) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def check_output_availability() -> OutputAvailability:
+    return OutputAvailability(
+        searchable_pdf=shutil.which("ocrmypdf") is not None
+        and shutil.which("tesseract") is not None,
+        docling=_python_package_available("docling"),
+    )
 
 
 def check_ocrmypdf() -> ComponentStatus:
