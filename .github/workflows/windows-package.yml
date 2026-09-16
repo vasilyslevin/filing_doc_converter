@@ -1,0 +1,105 @@
+name: Windows development package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-package.yml"
+      - "packaging/windows/**"
+      - "src/filing_doc_converter/**"
+      - "pyproject.toml"
+      - "LICENSE"
+      - "THIRD_PARTY_NOTICES.md"
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install application and build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[full,dev]"
+          python -m pip install -r packaging/windows/requirements-build.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest
+
+      - name: Build standalone folder
+        shell: pwsh
+        run: ./packaging/windows/build.ps1
+
+      - name: Locate distribution
+        shell: pwsh
+        run: |
+          $Candidates = @(Get-ChildItem build/windows -Directory -Filter "*.dist")
+          if ($Candidates.Count -ne 1) {
+            throw "Expected one Nuitka distribution directory; found $($Candidates.Count)."
+          }
+          "DIST_DIR=$($Candidates[0].FullName)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Verify package contents
+        shell: pwsh
+        run: |
+          $RequiredFiles = @(
+            "FilingDocumentConverter.exe",
+            "docling-tools.exe",
+            "LICENSE",
+            "THIRD_PARTY_NOTICES.md",
+            "PACKAGING_NOTES.txt",
+            "SHA256SUMS.txt"
+          )
+          foreach ($Name in $RequiredFiles) {
+            $Path = Join-Path $env:DIST_DIR $Name
+            if (-not (Test-Path $Path -PathType Leaf)) {
+              throw "Missing package file: $Name"
+            }
+          }
+
+      - name: Smoke test packaged executables
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          DO_NOT_TRACK: "1"
+        run: |
+          & (Join-Path $env:DIST_DIR "FilingDocumentConverter.exe") --package-smoke-test
+          if ($LASTEXITCODE -ne 0) {
+            throw "GUI package smoke test failed with exit code $LASTEXITCODE."
+          }
+          & (Join-Path $env:DIST_DIR "docling-tools.exe") --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Docling tools help failed with exit code $LASTEXITCODE."
+          }
+          & (Join-Path $env:DIST_DIR "docling-tools.exe") models download --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Docling model-download help failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Create ZIP artifact
+        shell: pwsh
+        run: |
+          $ZipPath = Join-Path $PWD "FilingDocumentConverter-Windows-x64.zip"
+          Compress-Archive -Path $env:DIST_DIR -DestinationPath $ZipPath -CompressionLevel Optimal
+          "PACKAGE_ZIP=$ZipPath" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Upload unsigned development package
+        uses: actions/upload-artifact@v4
+        with:
+          name: FilingDocumentConverter-Windows-x64
+          path: ${{ env.PACKAGE_ZIP }}
+          if-no-files-found: error
+          retention-days: 14
