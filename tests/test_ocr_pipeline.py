@@ -1,11 +1,13 @@
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
 from filing_doc_converter import ocr_pipeline
+from filing_doc_converter.docling_runtime import LocalModelsUnavailableError
 from filing_doc_converter.ocr_pipeline import (
     ConversionError,
-    DoclingUnavailableError,
+    DoclingModelsUnavailableError,
     OcrError,
     OcrUnavailableError,
     OutputCollisionError,
@@ -16,6 +18,14 @@ from filing_doc_converter.ocr_pipeline import (
     run_ocr,
     searchable_output_path,
 )
+
+
+def fake_converter_context(monkeypatch, converter) -> None:
+    @contextmanager
+    def factory(model_directory=None):
+        yield converter
+
+    monkeypatch.setattr(ocr_pipeline, "local_pdf_converter", factory)
 
 
 def test_searchable_output_path() -> None:
@@ -55,7 +65,7 @@ def test_build_ocr_command_uses_safe_argument_list() -> None:
         "--language",
         "eng",
         "filing with spaces.pdf",
-        str(Path("Converted") / "filing with spaces.searchable.pdf"),
+        "Converted/filing with spaces.searchable.pdf",
     ]
 
 
@@ -87,20 +97,18 @@ def test_existing_output_is_not_overwritten(tmp_path: Path) -> None:
     assert destination.read_bytes() == b"existing"
 
 
-def test_docling_dependency_missing_is_reported(monkeypatch, tmp_path: Path) -> None:
+def test_docling_missing_models_are_reported(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "filing.pdf"
     source.write_bytes(b"%PDF-1.4\n")
 
-    def raise_missing_dependency():
-        raise DoclingUnavailableError("Docling was not found")
+    @contextmanager
+    def unavailable(model_directory=None):
+        raise LocalModelsUnavailableError("Open Help > System Check and Download Models")
+        yield
 
-    monkeypatch.setattr(
-        ocr_pipeline,
-        "_load_docling_converter_class",
-        raise_missing_dependency,
-    )
+    monkeypatch.setattr(ocr_pipeline, "local_pdf_converter", unavailable)
 
-    with pytest.raises(DoclingUnavailableError, match="Docling was not found"):
+    with pytest.raises(DoclingModelsUnavailableError, match="Download Models"):
         run_docling(
             source,
             tmp_path / "output",
@@ -114,7 +122,7 @@ def test_docling_outputs_are_exported_with_expected_options(monkeypatch, tmp_pat
     source.write_bytes(b"%PDF-1.4\n")
     output_directory = tmp_path / "output"
     output_directory.mkdir()
-    captured: dict[str, str | bool] = {}
+    captured: dict[str, str] = {}
 
     class FakeDocument:
         def export_to_markdown(self, *, page_break_placeholder: str) -> str:
@@ -128,11 +136,11 @@ def test_docling_outputs_are_exported_with_expected_options(monkeypatch, tmp_pat
         document = FakeDocument()
 
     class FakeConverter:
-        def convert(self, input_path: str) -> FakeResult:
-            captured["converted_path"] = input_path
+        def convert(self, input_path: Path) -> FakeResult:
+            captured["converted_path"] = str(input_path)
             return FakeResult()
 
-    monkeypatch.setattr(ocr_pipeline, "_load_docling_converter_class", lambda: FakeConverter)
+    fake_converter_context(monkeypatch, FakeConverter())
 
     result = run_docling(
         source,
@@ -162,10 +170,10 @@ def test_docling_refuses_to_overwrite_existing_output(monkeypatch, tmp_path: Pat
     markdown_file.write_text("existing", encoding="utf-8")
 
     class FakeConverter:
-        def convert(self, input_path: str) -> None:  # pragma: no cover
+        def convert(self, input_path: Path) -> None:
             raise AssertionError(f"Should not convert {input_path}")
 
-    monkeypatch.setattr(ocr_pipeline, "_load_docling_converter_class", lambda: FakeConverter)
+    fake_converter_context(monkeypatch, FakeConverter())
 
     with pytest.raises(OutputCollisionError, match="will not be overwritten"):
         run_docling(
@@ -195,10 +203,10 @@ def test_docling_export_failure_cleans_partial_outputs(monkeypatch, tmp_path: Pa
         document = FakeDocument()
 
     class FakeConverter:
-        def convert(self, input_path: str) -> FakeResult:
+        def convert(self, input_path: Path) -> FakeResult:
             return FakeResult()
 
-    monkeypatch.setattr(ocr_pipeline, "_load_docling_converter_class", lambda: FakeConverter)
+    fake_converter_context(monkeypatch, FakeConverter())
 
     with pytest.raises(ConversionError, match="Docling export failed"):
         run_docling(

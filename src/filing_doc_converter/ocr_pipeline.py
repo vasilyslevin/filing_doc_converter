@@ -7,6 +7,12 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Event
 
+from filing_doc_converter.docling_runtime import (
+    DoclingRuntimeUnavailableError,
+    LocalModelsUnavailableError,
+    local_pdf_converter,
+)
+
 
 class OcrError(RuntimeError):
     """Base error raised by the OCR pipeline."""
@@ -22,6 +28,10 @@ class OcrCancelledError(OcrError):
 
 class DoclingUnavailableError(OcrError):
     """Raised when Docling cannot be imported."""
+
+
+class DoclingModelsUnavailableError(OcrError):
+    """Raised when local Docling model setup is incomplete."""
 
 
 class ConversionError(OcrError):
@@ -86,16 +96,6 @@ def build_ocr_command(
     ]
 
 
-def _load_docling_converter_class():
-    try:
-        from docling.document_converter import DocumentConverter
-    except ImportError as error:
-        raise DoclingUnavailableError(
-            "Docling was not found. Install the Docling optional dependencies and try again."
-        ) from error
-    return DocumentConverter
-
-
 def _write_text_atomic(destination: Path, content: str) -> None:
     if destination.exists():
         raise OutputCollisionError(
@@ -134,6 +134,7 @@ def run_docling(
     export_markdown: bool,
     export_json: bool,
     output_stem: str | None = None,
+    model_directory: Path | None = None,
     cancel_event: Event | None = None,
 ) -> DoclingResult:
     source = input_path.resolve()
@@ -165,30 +166,42 @@ def run_docling(
                 f"Output already exists and will not be overwritten: {destination}"
             )
 
-    converter_class = _load_docling_converter_class()
-    converter = converter_class()
-    try:
-        result = converter.convert(str(source))
-    except Exception as error:
-        raise ConversionError(f"Docling conversion failed for {source.name}: {error}") from error
-
-    if cancel_event is not None and cancel_event.is_set():
-        raise OcrCancelledError(f"Processing cancelled: {source.name}")
-
     created_paths: list[Path] = []
     try:
-        if markdown_destination is not None:
-            markdown = result.document.export_to_markdown(
-                page_break_placeholder="<!-- PDF_PAGE_BREAK -->"
-            )
-            _write_text_atomic(markdown_destination, markdown)
-            created_paths.append(markdown_destination)
+        with local_pdf_converter(model_directory) as converter:
+            try:
+                result = converter.convert(source)
+            except Exception as error:
+                raise ConversionError(
+                    f"Docling conversion failed for {source.name}: {error}"
+                ) from error
 
-        if json_destination is not None:
-            exported = result.document.export_to_dict()
-            payload = json.dumps(exported, ensure_ascii=False, indent=2)
-            _write_text_atomic(json_destination, payload)
-            created_paths.append(json_destination)
+            if cancel_event is not None and cancel_event.is_set():
+                raise OcrCancelledError(f"Processing cancelled: {source.name}")
+
+            try:
+                if markdown_destination is not None:
+                    markdown = result.document.export_to_markdown(
+                        page_break_placeholder="<!-- PDF_PAGE_BREAK -->"
+                    )
+                    _write_text_atomic(markdown_destination, markdown)
+                    created_paths.append(markdown_destination)
+
+                if json_destination is not None:
+                    exported = result.document.export_to_dict()
+                    payload = json.dumps(exported, ensure_ascii=False, indent=2)
+                    _write_text_atomic(json_destination, payload)
+                    created_paths.append(json_destination)
+            except OcrError:
+                raise
+            except Exception as error:
+                raise ConversionError(
+                    f"Docling export failed for {source.name}: {error}"
+                ) from error
+    except LocalModelsUnavailableError as error:
+        raise DoclingModelsUnavailableError(str(error)) from error
+    except DoclingRuntimeUnavailableError as error:
+        raise DoclingUnavailableError(str(error)) from error
     except OcrError:
         for path in created_paths:
             path.unlink(missing_ok=True)
@@ -197,7 +210,7 @@ def run_docling(
         for path in created_paths:
             path.unlink(missing_ok=True)
         raise ConversionError(
-            f"Docling export failed for {source.name}: {error}"
+            f"Docling conversion failed for {source.name}: {error}"
         ) from error
 
     return DoclingResult(

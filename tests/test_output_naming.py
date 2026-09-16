@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from pathlib import Path
 
 from filing_doc_converter import ocr_pipeline, ocr_worker
@@ -22,10 +23,14 @@ def test_docling_uses_original_stem_for_combined_outputs(monkeypatch, tmp_path: 
         document = FakeDocument()
 
     class FakeConverter:
-        def convert(self, input_path: str) -> FakeResult:
+        def convert(self, input_path: Path) -> FakeResult:
             return FakeResult()
 
-    monkeypatch.setattr(ocr_pipeline, "_load_docling_converter_class", lambda: FakeConverter)
+    @contextmanager
+    def fake_local_converter(model_directory=None):
+        yield FakeConverter()
+
+    monkeypatch.setattr(ocr_pipeline, "local_pdf_converter", fake_local_converter)
 
     result = run_docling(
         searchable,
