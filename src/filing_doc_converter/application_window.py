@@ -55,13 +55,13 @@ class ApplicationWindow(MainWindow):
         self._availability_provider = availability_provider
         self._model_state_provider = model_state_provider
         self._settings = settings if settings is not None else QSettings()
+        super().__init__()
         self._processing_clock = QElapsedTimer()
         self._processing_timer = QTimer(self)
         self._processing_timer.setInterval(1000)
         self._processing_timer.timeout.connect(self._refresh_processing_text)
         self._processing_stage = "Preparing"
         self._processing_file = ""
-        super().__init__()
         self.queue.itemClicked.connect(self.show_queue_item_details)
         self._add_docling_performance_controls()
 
@@ -245,7 +245,10 @@ class ApplicationWindow(MainWindow):
     def _on_file_started(self, index: int, total: int, name: str) -> None:
         super()._on_file_started(index, total, name)
         self._processing_file = f"{index}/{total}: {name}"
-        self._processing_stage = "Preparing"
+        if self.searchable_pdf_checkbox.isChecked():
+            self._processing_stage = "Running OCRmyPDF"
+        else:
+            self._processing_stage = "Loading models and analyzing pages"
         self.progress_bar.setRange(0, 0)
         self._refresh_processing_text()
 
