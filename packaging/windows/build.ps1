@@ -14,7 +14,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 $SourceRoot = Join-Path $RepositoryRoot "src"
 $GuiEntry = Join-Path $PSScriptRoot "FilingDocumentConverter.py"
 $ToolsEntry = Join-Path $PSScriptRoot "docling-tools.py"
-$OcrEntry = Join-Path $PSScriptRoot "ocrmypdf.py"
+$OcrEntry = Join-Path $SourceRoot "filing_doc_converter\ocrmypdf_entry.py"
 $StagingDirectory = Join-Path $OutputDirectory "dist"
 $WorkDirectory = Join-Path $OutputDirectory "work"
 $SpecDirectory = Join-Path $OutputDirectory "spec"
