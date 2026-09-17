@@ -37,6 +37,23 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $IconPath -PathType Leaf)) {
     throw "Could not generate the Windows application icon."
 }
 
+$FindTorchvisionExtension = @'
+import importlib.util
+from pathlib import Path
+spec = importlib.util.find_spec("torchvision")
+if spec is None or spec.submodule_search_locations is None:
+    raise SystemExit("torchvision package was not found")
+root = Path(next(iter(spec.submodule_search_locations)))
+matches = sorted(root.glob("_C*.pyd"))
+if not matches:
+    raise SystemExit("torchvision native extension _C.pyd was not found")
+print(matches[0])
+'@
+$TorchvisionExtension = (& $Python -c $FindTorchvisionExtension).Trim()
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $TorchvisionExtension -PathType Leaf)) {
+    throw "Could not locate the installed torchvision native extension."
+}
+
 $CommonArguments = @(
     "-m", "PyInstaller",
     "--noconfirm",
@@ -53,7 +70,7 @@ $DoclingArguments = @(
     "--collect-all=rapidocr",
     "--collect-all=transformers",
     "--collect-binaries=torchvision",
-    "--hidden-import=torchvision._C",
+    "--add-binary=$TorchvisionExtension;torchvision",
     "--runtime-hook=$TorchvisionRuntimeHook",
     "--hidden-import=docling.cli.tools",
     "--hidden-import=docling.document_converter"
