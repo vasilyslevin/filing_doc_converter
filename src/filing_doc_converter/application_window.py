@@ -12,7 +12,11 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
-from filing_doc_converter.docling_runtime import DOCLING_OCR_ENV, DOCLING_TABLES_ENV
+from filing_doc_converter.docling_runtime import (
+    DOCLING_CPU_ONLY_ENV,
+    DOCLING_OCR_ENV,
+    DOCLING_TABLES_ENV,
+)
 from filing_doc_converter.error_dialog import ErrorDetailsDialog
 from filing_doc_converter.main_window import MainWindow
 from filing_doc_converter.model_management import (
@@ -63,10 +67,16 @@ class ApplicationWindow(MainWindow):
         self.table_structure_checkbox.setToolTip(
             "Improves complex tables but adds substantial CPU processing time."
         )
+        self.cpu_only_checkbox = QCheckBox("CPU only (maximum compatibility)")
+        self.cpu_only_checkbox.setChecked(True)
+        self.cpu_only_checkbox.setToolTip(
+            "Uncheck to let Docling automatically use a supported GPU when available."
+        )
 
         options_row = QHBoxLayout()
         options_row.addWidget(self.docling_ocr_checkbox)
         options_row.addWidget(self.table_structure_checkbox)
+        options_row.addWidget(self.cpu_only_checkbox)
         options_row.addStretch()
         output_parent = self.markdown_checkbox.parentWidget()
         if output_parent is not None and output_parent.layout() is not None:
@@ -101,8 +111,12 @@ class ApplicationWindow(MainWindow):
             else:
                 checkbox.setToolTip("")
 
-        self.docling_ocr_checkbox.setEnabled(availability.docling)
-        self.table_structure_checkbox.setEnabled(availability.docling)
+        for checkbox in (
+            self.docling_ocr_checkbox,
+            self.table_structure_checkbox,
+            self.cpu_only_checkbox,
+        ):
+            checkbox.setEnabled(availability.docling)
         self.update_process_button()
 
     def apply_diagnostics(self, diagnostics: SystemDiagnostics) -> None:
@@ -145,6 +159,7 @@ class ApplicationWindow(MainWindow):
         os.environ[DOCLING_TABLES_ENV] = (
             "1" if self.table_structure_checkbox.isChecked() else "0"
         )
+        os.environ[DOCLING_CPU_ONLY_ENV] = "1" if self.cpu_only_checkbox.isChecked() else "0"
         super().start_processing()
 
     def open_output_directory(self) -> None:

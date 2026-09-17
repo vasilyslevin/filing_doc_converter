@@ -15,7 +15,8 @@ OFFLINE_ENVIRONMENT = {
 }
 DOCLING_OCR_ENV = "FILING_DOC_CONVERTER_DO_OCR"
 DOCLING_TABLES_ENV = "FILING_DOC_CONVERTER_DO_TABLES"
-_CONVERTER_CACHE: dict[tuple[Path, bool, bool, int], object] = {}
+DOCLING_CPU_ONLY_ENV = "FILING_DOC_CONVERTER_CPU_ONLY"
+_CONVERTER_CACHE: dict[tuple[Path, bool, bool, int, str], object] = {}
 
 
 class LocalModelsUnavailableError(RuntimeError):
@@ -66,6 +67,10 @@ def _cpu_thread_count() -> int:
     return max(1, min(8, os.cpu_count() or 4))
 
 
+def _device_mode() -> str:
+    return "cpu" if _environment_flag(DOCLING_CPU_ONLY_ENV, default=True) else "auto"
+
+
 def clear_converter_cache() -> None:
     _CONVERTER_CACHE.clear()
 
@@ -75,7 +80,8 @@ def create_local_pdf_converter(model_directory: Path):
     do_ocr = _environment_flag(DOCLING_OCR_ENV)
     do_tables = _environment_flag(DOCLING_TABLES_ENV)
     num_threads = _cpu_thread_count()
-    cache_key = (directory, do_ocr, do_tables, num_threads)
+    device = _device_mode()
+    cache_key = (directory, do_ocr, do_tables, num_threads, device)
     cached = _CONVERTER_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -110,7 +116,7 @@ def offline_environment(
     values = {
         **OFFLINE_ENVIRONMENT,
         "DOCLING_ARTIFACTS_PATH": str(model_directory),
-        "DOCLING_DEVICE": "cpu",
+        "DOCLING_DEVICE": _device_mode(),
         "DOCLING_NUM_THREADS": str(_cpu_thread_count()),
     }
     previous = {key: active_environment.get(key) for key in values}
