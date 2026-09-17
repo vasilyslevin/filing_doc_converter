@@ -5,9 +5,10 @@ This folder is not a production release. Keep the folder contents together.
 Executables:
 - FilingDocumentConverter.exe starts the desktop application.
 - docling-tools.exe is the companion used only for explicit model setup.
+- ocrmypdf.exe is the companion used to create searchable PDF output.
 
 Models are not included. Choose a model folder and approve the download through Help > System Check. Document conversion does not automatically download models.
 
-Tesseract and Ghostscript are not bundled in this development build. Install them separately and make them available on PATH before using searchable-PDF output.
+OCRmyPDF is included, but Tesseract and Ghostscript are not bundled in this development build. Install them separately and make them available on PATH before using searchable-PDF output.
 
 Verify generated Markdown and JSON against the original PDF before relying on them. The original PDF remains authoritative.

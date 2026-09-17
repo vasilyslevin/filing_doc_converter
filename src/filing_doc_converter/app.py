@@ -1,12 +1,26 @@
+import os
 import sys
+from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
 from filing_doc_converter.application_window import ApplicationWindow
-from filing_doc_converter.model_management import resolve_model_downloader
+from filing_doc_converter.model_management import (
+    is_packaged_application,
+    resolve_model_downloader,
+)
 from filing_doc_converter.privacy_notice import show_first_run_privacy_notice
 
 PACKAGE_SMOKE_TEST_FLAG = "--package-smoke-test"
+
+
+def prepare_packaged_path() -> None:
+    if not is_packaged_application():
+        return
+    application_directory = str(Path(sys.executable).resolve().parent)
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if application_directory not in path_entries:
+        os.environ["PATH"] = os.pathsep.join([application_directory, *path_entries])
 
 
 def run_package_smoke_test() -> int:
@@ -17,6 +31,7 @@ def run_package_smoke_test() -> int:
 
 
 def main() -> int:
+    prepare_packaged_path()
     smoke_test = PACKAGE_SMOKE_TEST_FLAG in sys.argv
     arguments = [argument for argument in sys.argv if argument != PACKAGE_SMOKE_TEST_FLAG]
     application = QApplication(arguments)
