@@ -7,7 +7,7 @@ from filing_doc_converter.model_management import ModelDirectoryState
 from filing_doc_converter.system_diagnostics import OutputAvailability
 
 
-def test_docling_performance_controls_default_to_fast_mode(monkeypatch, qtbot) -> None:
+def test_docling_performance_controls_default_to_fast_mode(qtbot) -> None:
     window = ApplicationWindow(
         availability_provider=lambda: OutputAvailability(True, True),
         model_state_provider=lambda: ModelDirectoryState(Path("models"), "settings", True),
@@ -17,7 +17,6 @@ def test_docling_performance_controls_default_to_fast_mode(monkeypatch, qtbot) -
     assert not window.docling_ocr_checkbox.isChecked()
     assert not window.table_structure_checkbox.isChecked()
 
-    monkeypatch.setattr(window, "pdf_paths", (), raising=False)
     window.start_processing()
 
     assert os.environ[DOCLING_OCR_ENV] == "0"
