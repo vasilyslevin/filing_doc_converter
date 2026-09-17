@@ -5,6 +5,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QListWidgetItem, QMessageBox, QPushButton
 
+from filing_doc_converter.error_dialog import ErrorDetailsDialog
 from filing_doc_converter.main_window import MainWindow
 from filing_doc_converter.model_management import (
     ModelDirectoryState,
@@ -106,7 +107,7 @@ class ApplicationWindow(MainWindow):
         detail = item.toolTip().strip()
         if not detail:
             return
-        QMessageBox.critical(self, "Processing failure details", detail)
+        ErrorDetailsDialog(detail, self).exec()
 
     def open_output_directory(self) -> None:
         output_directory = self.output_directory

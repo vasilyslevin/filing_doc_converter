@@ -17,15 +17,20 @@ def test_clicking_failed_item_shows_stored_error(monkeypatch, qtbot) -> None:
     item = QListWidgetItem("Failed: filing.pdf")
     item.setToolTip("Could not import module AutoImageProcessor")
     window.queue.addItem(item)
-    messages = []
-    monkeypatch.setattr(
-        application_window.QMessageBox,
-        "critical",
-        lambda parent, title, text: messages.append((title, text)),
-    )
+    dialogs = []
+
+    class FakeDialog:
+        def __init__(self, details, parent) -> None:
+            dialogs.append((details, parent))
+
+        def exec(self) -> None:
+            dialogs.append("shown")
+
+    monkeypatch.setattr(application_window, "ErrorDetailsDialog", FakeDialog)
 
     window.queue.itemClicked.emit(item)
 
-    assert messages == [
-        ("Processing failure details", "Could not import module AutoImageProcessor")
+    assert dialogs == [
+        ("Could not import module AutoImageProcessor", window),
+        "shown",
     ]

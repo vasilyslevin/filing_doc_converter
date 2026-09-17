@@ -111,6 +111,11 @@ try {
     Remove-Item $ToolsDistribution -Recurse -Force
     Remove-Item $OcrDistribution -Recurse -Force
 
+    & (Join-Path $Distribution "docling-tools.exe") --runtime-check
+    if ($LASTEXITCODE -ne 0) {
+        throw "Packaged Docling runtime check failed with exit code $LASTEXITCODE."
+    }
+
     $TesseractBundled = -not [string]::IsNullOrWhiteSpace($TesseractRoot)
     if ($TesseractBundled) {
         $TesseractDestination = Join-Path $Distribution "tools\tesseract"
