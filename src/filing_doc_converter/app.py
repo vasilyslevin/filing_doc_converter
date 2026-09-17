@@ -18,10 +18,20 @@ PACKAGE_SMOKE_TEST_FLAG = "--package-smoke-test"
 def prepare_packaged_path() -> None:
     if not is_packaged_application():
         return
-    application_directory = str(Path(sys.executable).resolve().parent)
+    application_directory = Path(sys.executable).resolve().parent
+    bundled_tesseract = application_directory / "tools" / "tesseract"
+    preferred_directories = [application_directory]
+    if (bundled_tesseract / "tesseract.exe").is_file():
+        preferred_directories.insert(0, bundled_tesseract)
+        tessdata = bundled_tesseract / "tessdata"
+        if tessdata.is_dir():
+            os.environ["TESSDATA_PREFIX"] = str(tessdata)
+
     path_entries = os.environ.get("PATH", "").split(os.pathsep)
-    if application_directory not in path_entries:
-        os.environ["PATH"] = os.pathsep.join([application_directory, *path_entries])
+    existing = {entry.casefold() for entry in path_entries}
+    additions = [str(path) for path in preferred_directories if str(path).casefold() not in existing]
+    if additions:
+        os.environ["PATH"] = os.pathsep.join([*additions, *path_entries])
 
 
 def run_package_smoke_test() -> int:

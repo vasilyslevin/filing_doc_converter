@@ -1,6 +1,7 @@
 param(
     [string]$Python = "python",
-    [string]$OutputDirectory = ""
+    [string]$OutputDirectory = "",
+    [string]$TesseractRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +19,7 @@ $OcrEntry = Join-Path $SourceRoot "filing_doc_converter\ocrmypdf_entry.py"
 $IconGenerator = Join-Path $PSScriptRoot "create_icon.py"
 $IconSource = Join-Path $SourceRoot "filing_doc_converter\assets\app_icon.svg"
 $IconPath = Join-Path $OutputDirectory "FilingDocumentConverter.ico"
+$TesseractBundler = Join-Path $PSScriptRoot "bundle-tesseract.ps1"
 $StagingDirectory = Join-Path $OutputDirectory "dist"
 $WorkDirectory = Join-Path $OutputDirectory "work"
 $SpecDirectory = Join-Path $OutputDirectory "spec"
@@ -108,6 +110,16 @@ try {
     Copy-Item (Join-Path $OcrDistribution "*") $Distribution -Recurse -Force
     Remove-Item $ToolsDistribution -Recurse -Force
     Remove-Item $OcrDistribution -Recurse -Force
+
+    $TesseractBundled = -not [string]::IsNullOrWhiteSpace($TesseractRoot)
+    if ($TesseractBundled) {
+        $TesseractDestination = Join-Path $Distribution "tools\tesseract"
+        & $TesseractBundler -SourceDirectory $TesseractRoot -DestinationDirectory $TesseractDestination
+        if ($LASTEXITCODE -ne 0) {
+            throw "Tesseract bundling failed with exit code $LASTEXITCODE."
+        }
+    }
+
     Copy-Item (Join-Path $RepositoryRoot "LICENSE") $Distribution -Force
     Copy-Item (Join-Path $RepositoryRoot "THIRD_PARTY_NOTICES.md") $Distribution -Force
     Copy-Item (Join-Path $PSScriptRoot "PACKAGING_NOTES.txt") $Distribution -Force
@@ -120,6 +132,13 @@ try {
         "THIRD_PARTY_NOTICES.md",
         "PACKAGING_NOTES.txt"
     )
+    if ($TesseractBundled) {
+        $HashTargets += @(
+            "tools\tesseract\tesseract.exe",
+            "tools\tesseract\tessdata\eng.traineddata",
+            "tools\tesseract\BUNDLE_INFO.txt"
+        )
+    }
     $Hashes = foreach ($RelativePath in $HashTargets) {
         $Target = Join-Path $Distribution $RelativePath
         if (-not (Test-Path $Target -PathType Leaf)) {
