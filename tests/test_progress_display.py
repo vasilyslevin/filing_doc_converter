@@ -18,7 +18,7 @@ def test_progress_is_busy_while_document_is_processing(qtbot) -> None:
 
     assert window.progress_bar.minimum() == 0
     assert window.progress_bar.maximum() == 0
-    assert window.progress_bar.format() == "Processing 1/1: filing.pdf"
+    assert window.progress_bar.format() == "Processing 1 of 1: filing.pdf"
 
     window._on_file_failed("filing.pdf", "test error")
 
