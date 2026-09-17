@@ -20,6 +20,7 @@ $IconGenerator = Join-Path $PSScriptRoot "create_icon.py"
 $IconSource = Join-Path $SourceRoot "filing_doc_converter\assets\app_icon.svg"
 $IconPath = Join-Path $OutputDirectory "FilingDocumentConverter.ico"
 $TesseractBundler = Join-Path $PSScriptRoot "bundle-tesseract.ps1"
+$TorchvisionRuntimeHook = Join-Path $PSScriptRoot "pyi_rth_torchvision.py"
 $StagingDirectory = Join-Path $OutputDirectory "dist"
 $WorkDirectory = Join-Path $OutputDirectory "work"
 $SpecDirectory = Join-Path $OutputDirectory "spec"
@@ -51,6 +52,9 @@ $DoclingArguments = @(
     "--collect-all=docling_parse",
     "--collect-all=rapidocr",
     "--collect-all=transformers",
+    "--collect-binaries=torchvision",
+    "--hidden-import=torchvision._C",
+    "--runtime-hook=$TorchvisionRuntimeHook",
     "--hidden-import=docling.cli.tools",
     "--hidden-import=docling.document_converter"
 )
