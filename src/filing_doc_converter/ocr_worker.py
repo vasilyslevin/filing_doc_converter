@@ -14,6 +14,7 @@ from filing_doc_converter.ocr_pipeline import (
 
 class ProcessingWorker(QObject):
     file_started = Signal(int, int, str)
+    stage_changed = Signal(str)
     file_succeeded = Signal(str, str)
     file_failed = Signal(str, str)
     finished = Signal(bool, int, int)
@@ -56,6 +57,7 @@ class ProcessingWorker(QObject):
             try:
                 docling_input = input_path
                 if self._create_searchable_pdf:
+                    self.stage_changed.emit("Running OCRmyPDF")
                     ocr_result = run_ocr(
                         input_path,
                         self._output_directory,
@@ -67,6 +69,7 @@ class ProcessingWorker(QObject):
                     success_paths.append(str(ocr_result.output_path))
 
                 if self._create_markdown or self._create_json:
+                    self.stage_changed.emit("Loading models and analyzing pages")
                     docling_result = run_docling(
                         docling_input,
                         self._output_directory,
@@ -75,6 +78,7 @@ class ProcessingWorker(QObject):
                         output_stem=input_path.stem,
                         cancel_event=self._cancel_event,
                     )
+                    self.stage_changed.emit("Finalizing Markdown/JSON outputs")
                     self._append_docling_outputs(success_paths, docling_result)
             except OcrCancelledError:
                 cancelled = True

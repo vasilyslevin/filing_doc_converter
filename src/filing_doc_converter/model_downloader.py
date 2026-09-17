@@ -66,10 +66,11 @@ class ModelDownloadWorker(QObject):
                     continue
 
             if self._process.returncode != 0:
-                detail = self._last_output_line(output)
+                detail = output.strip()
                 message = "The model download did not complete."
                 if detail:
-                    message = f"{message} {detail}"
+                    separator = "\n\n" if "\n" in detail else " "
+                    message = f"{message}{separator}{detail}"
                 self.failed.emit(message)
                 return
 
@@ -95,8 +96,3 @@ class ModelDownloadWorker(QObject):
         except subprocess.TimeoutExpired:
             process.kill()
             process.communicate()
-
-    @staticmethod
-    def _last_output_line(output: str) -> str:
-        lines = [line.strip() for line in output.splitlines() if line.strip()]
-        return lines[-1] if lines else ""

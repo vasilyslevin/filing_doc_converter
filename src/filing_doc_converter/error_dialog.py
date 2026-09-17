@@ -10,15 +10,19 @@ from PySide6.QtWidgets import (
 
 
 class ErrorDetailsDialog(QDialog):
-    def __init__(self, details: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        details: str,
+        parent: QWidget | None = None,
+        *,
+        title: str = "Processing failure details",
+        summary: str = "The document could not be processed.",
+    ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Processing failure details")
+        self.setWindowTitle(title)
         self.resize(720, 420)
 
-        message = QLabel(
-            "The document could not be processed. "
-            "Copy the details below when reporting the issue."
-        )
+        message = QLabel(f"{summary} Copy the details below when reporting the issue.")
         message.setWordWrap(True)
 
         self.details_edit = QPlainTextEdit()
