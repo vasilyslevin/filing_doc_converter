@@ -2,7 +2,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QSettings, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -30,6 +30,10 @@ from filing_doc_converter.system_diagnostics import (
     check_output_availability,
 )
 
+DOCLING_OCR_SETTING = "processing/docling_ocr"
+DOCLING_TABLES_SETTING = "processing/docling_tables"
+DOCLING_CPU_ONLY_SETTING = "processing/docling_cpu_only"
+
 
 class ApplicationWindow(MainWindow):
     def __init__(
@@ -37,9 +41,11 @@ class ApplicationWindow(MainWindow):
         *,
         availability_provider: Callable[[], OutputAvailability] = check_output_availability,
         model_state_provider: Callable[[], ModelDirectoryState] = load_model_directory,
+        settings: QSettings | None = None,
     ) -> None:
         self._availability_provider = availability_provider
         self._model_state_provider = model_state_provider
+        self._settings = settings if settings is not None else QSettings()
         super().__init__()
         self.queue.itemClicked.connect(self.show_queue_item_details)
         self._add_docling_performance_controls()
@@ -56,22 +62,40 @@ class ApplicationWindow(MainWindow):
         self.refresh_output_availability()
         self._update_open_output_button()
 
+    def _setting_bool(self, key: str, default: bool) -> bool:
+        value = self._settings.value(key, default)
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
     def _add_docling_performance_controls(self) -> None:
         self.docling_ocr_checkbox = QCheckBox("OCR scanned pages in AI output")
-        self.docling_ocr_checkbox.setChecked(False)
+        self.docling_ocr_checkbox.setChecked(
+            self._setting_bool(DOCLING_OCR_SETTING, False)
+        )
         self.docling_ocr_checkbox.setToolTip(
             "Enable only for scanned PDFs without selectable text. This is slower."
         )
         self.table_structure_checkbox = QCheckBox("Analyze table structure")
-        self.table_structure_checkbox.setChecked(False)
+        self.table_structure_checkbox.setChecked(
+            self._setting_bool(DOCLING_TABLES_SETTING, False)
+        )
         self.table_structure_checkbox.setToolTip(
             "Improves complex tables but adds substantial CPU processing time."
         )
         self.cpu_only_checkbox = QCheckBox("CPU only (maximum compatibility)")
-        self.cpu_only_checkbox.setChecked(True)
+        self.cpu_only_checkbox.setChecked(
+            self._setting_bool(DOCLING_CPU_ONLY_SETTING, True)
+        )
         self.cpu_only_checkbox.setToolTip(
             "Uncheck to let Docling automatically use a supported GPU when available."
         )
+        for checkbox in (
+            self.docling_ocr_checkbox,
+            self.table_structure_checkbox,
+            self.cpu_only_checkbox,
+        ):
+            checkbox.toggled.connect(self._save_processing_preferences)
 
         options_row = QHBoxLayout()
         options_row.addWidget(self.docling_ocr_checkbox)
@@ -81,6 +105,18 @@ class ApplicationWindow(MainWindow):
         output_parent = self.markdown_checkbox.parentWidget()
         if output_parent is not None and output_parent.layout() is not None:
             output_parent.layout().addLayout(options_row)
+
+    def _save_processing_preferences(self) -> None:
+        self._settings.setValue(DOCLING_OCR_SETTING, self.docling_ocr_checkbox.isChecked())
+        self._settings.setValue(
+            DOCLING_TABLES_SETTING,
+            self.table_structure_checkbox.isChecked(),
+        )
+        self._settings.setValue(
+            DOCLING_CPU_ONLY_SETTING,
+            self.cpu_only_checkbox.isChecked(),
+        )
+        self._settings.sync()
 
     def set_output_directory(self, path: Path) -> None:
         super().set_output_directory(path)
@@ -141,7 +177,7 @@ class ApplicationWindow(MainWindow):
         )
 
     def show_system_check(self) -> None:
-        dialog = SystemCheckDialog(self)
+        dialog = SystemCheckDialog(self, settings=self._settings)
         dialog.diagnostics_updated.connect(self.apply_diagnostics)
         dialog.exec()
         self.refresh_output_availability()
