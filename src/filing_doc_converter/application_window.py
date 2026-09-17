@@ -132,13 +132,13 @@ class ApplicationWindow(MainWindow):
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setFormat(f"Processing {index}/{total}: {name}")
 
-    def _on_file_succeeded(self, index: int, output_files: object) -> None:
+    def _on_file_succeeded(self, input_path: str, output_files: object) -> None:
         self.progress_bar.setRange(0, max(1, len(self._pdf_paths)))
-        super()._on_file_succeeded(index, output_files)
+        super()._on_file_succeeded(input_path, output_files)
 
-    def _on_file_failed(self, index: int, error: str) -> None:
+    def _on_file_failed(self, input_path: str, error: str) -> None:
         self.progress_bar.setRange(0, max(1, len(self._pdf_paths)))
-        super()._on_file_failed(index, error)
+        super()._on_file_failed(input_path, error)
 
     def _on_processing_finished(self, cancelled: bool, succeeded: int, failed: int) -> None:
         self.progress_bar.setRange(0, max(1, len(self._pdf_paths)))
