@@ -1,5 +1,6 @@
 import os
 import shutil
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ from PySide6.QtCore import QSettings, QStandardPaths
 MODEL_DIRECTORY_ENV = "FILING_DOC_CONVERTER_MODEL_DIR"
 MODEL_DIRECTORY_SETTING = "models/directory"
 MODEL_READY_MARKER = ".filing-doc-converter-models-ready"
+PACKAGED_DOWNLOADER_NAME = "docling-tools.exe"
 
 
 class ModelManagementError(RuntimeError):
@@ -84,16 +86,34 @@ def mark_models_ready(path: str | Path) -> Path:
     return marker
 
 
+def is_packaged_application() -> bool:
+    return bool(getattr(sys, "frozen", False) or "__compiled__" in globals())
+
+
+def resolve_model_downloader() -> str:
+    if is_packaged_application():
+        companion = Path(sys.executable).resolve().with_name(PACKAGED_DOWNLOADER_NAME)
+        if companion.is_file():
+            return str(companion)
+        raise ModelManagementError(
+            "The packaged docling-tools.exe companion is missing. Reinstall or replace the "
+            "application folder before downloading models."
+        )
+
+    executable = shutil.which("docling-tools")
+    if executable:
+        return executable
+    raise ModelManagementError(
+        "docling-tools was not found. Install the Docling optional dependencies and try again."
+    )
+
+
 def build_model_download_command(
     path: str | Path,
     *,
     executable: str | None = None,
 ) -> list[str]:
-    resolved_executable = executable or shutil.which("docling-tools")
-    if not resolved_executable:
-        raise ModelManagementError(
-            "docling-tools was not found. Install the Docling optional dependencies and try again."
-        )
+    resolved_executable = executable or resolve_model_downloader()
     return [
         resolved_executable,
         "models",

@@ -5,6 +5,8 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
+from PySide6 import __version__ as PYSIDE_VERSION
+
 from filing_doc_converter import __version__
 from filing_doc_converter.model_management import load_model_directory
 
@@ -64,7 +66,7 @@ class SystemDiagnostics:
         return "\n".join(lines) + "\n"
 
 
-def _run_command(command: list[str], *, timeout: float = 5.0) -> tuple[bool, str, str | None]:
+def _run_command(command: list[str], *, timeout: float = 30.0) -> tuple[bool, str, str | None]:
     try:
         completed = subprocess.run(
             command,
@@ -198,17 +200,12 @@ def installation_guidance(component: str, operating_system: str | None = None) -
 
 
 def collect_system_diagnostics() -> SystemDiagnostics:
-    try:
-        pyside_version = importlib_metadata.version("PySide6")
-    except importlib_metadata.PackageNotFoundError:
-        pyside_version = "Unavailable"
-
     return SystemDiagnostics(
         application_version=__version__,
         operating_system=platform.system(),
         operating_system_version=platform.release(),
         architecture=platform.machine(),
         python_version=platform.python_version(),
-        pyside_version=pyside_version,
+        pyside_version=PYSIDE_VERSION,
         components=(check_ocrmypdf(), check_tesseract(), check_docling()),
     )

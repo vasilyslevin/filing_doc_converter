@@ -31,11 +31,13 @@ ocr = [
   "ocrmypdf>=17,<18"
 ]
 docling = [
-  "docling>=2,<3"
+  "docling>=2,<3",
+  "transformers==4.51.3"
 ]
 full = [
   "ocrmypdf>=17,<18",
-  "docling>=2,<3"
+  "docling>=2,<3",
+  "transformers==4.51.3"
 ]
 dev = [
   "pytest>=8,<9",
