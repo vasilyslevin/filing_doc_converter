@@ -22,6 +22,7 @@ from filing_doc_converter.model_downloader import ModelDownloadWorker
 from filing_doc_converter.model_management import (
     ModelDirectoryState,
     load_model_directory,
+    reset_model_directory,
     save_model_directory,
 )
 from filing_doc_converter.system_diagnostics import (
@@ -57,17 +58,19 @@ class SystemCheckDialog(QDialog):
         self.system_label = QLabel()
         self.system_label.setWordWrap(True)
 
-        self.component_table = QTableWidget(0, 4)
-        self.component_table.setHorizontalHeaderLabels(
-            ["Component", "Status", "Version", "Details"]
+        self.component_table = QTableWidget(0, 3)
+        self.component_table.setHorizontalHeaderLabels(["Component", "Status", "Details"])
+        self.component_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.component_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.component_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
         )
         self.component_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.component_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        header = self.component_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.component_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
 
         self.guidance_label = QLabel()
         self.guidance_label.setWordWrap(True)
@@ -80,6 +83,8 @@ class SystemCheckDialog(QDialog):
         self.model_status_label.setWordWrap(True)
         self.choose_model_button = QPushButton("Choose Model Folder")
         self.choose_model_button.clicked.connect(self.choose_model_directory)
+        self.reset_model_button = QPushButton("Reset to Default Folder")
+        self.reset_model_button.clicked.connect(self.reset_to_default_model_directory)
         self.download_model_button = QPushButton("Download Models")
         self.download_model_button.clicked.connect(self.confirm_model_download)
         self.cancel_download_button = QPushButton("Cancel Download")
@@ -87,6 +92,7 @@ class SystemCheckDialog(QDialog):
         self.cancel_download_button.clicked.connect(self.cancel_model_download)
         model_buttons = QHBoxLayout()
         model_buttons.addWidget(self.choose_model_button)
+        model_buttons.addWidget(self.reset_model_button)
         model_buttons.addWidget(self.download_model_button)
         model_buttons.addWidget(self.cancel_download_button)
         model_buttons.addStretch()
@@ -130,9 +136,6 @@ class SystemCheckDialog(QDialog):
         self.refresh_button.setEnabled(False)
         try:
             diagnostics = self._diagnostics_provider()
-        except Exception as error:  # noqa: BLE001 - diagnostic boundary must keep UI usable
-            QMessageBox.warning(self, "System Check", f"The system check could not finish: {error}")
-            return
         finally:
             self.refresh_button.setEnabled(True)
 
@@ -153,16 +156,22 @@ class SystemCheckDialog(QDialog):
         }.get(state.source, state.source)
         self.model_status_label.setText(
             f'<span style="color:{colour}">{status}</span><br>'
-            f"Folder: {state.path}<br>Source: {source}<br>"
-            "Document conversion is designed to use local model files after setup."
+            f"Active folder: {state.path}<br>Source: {source}<br>"
+            "Document conversion uses local model files after setup."
         )
         managed = state.source == "environment"
         active = self._download_thread is not None
         self.choose_model_button.setEnabled(not managed and not active)
+        self.reset_model_button.setEnabled(
+            not managed and state.source == "settings" and not active
+        )
         self.choose_model_button.setToolTip(
             "The folder is controlled by FILING_DOC_CONVERTER_MODEL_DIR."
             if managed
             else ""
+        )
+        self.reset_model_button.setToolTip(
+            "Clear the saved folder selection without deleting any model files."
         )
         self.download_model_button.setEnabled(not active)
 
@@ -176,6 +185,10 @@ class SystemCheckDialog(QDialog):
         if not selected:
             return
         save_model_directory(selected, self._settings)
+        self.refresh_model_state()
+
+    def reset_to_default_model_directory(self) -> None:
+        reset_model_directory(self._settings)
         self.refresh_model_state()
 
     def confirm_model_download(self) -> None:
@@ -211,6 +224,7 @@ class SystemCheckDialog(QDialog):
         self._download_thread.finished.connect(self._download_thread.deleteLater)
         self._download_thread.finished.connect(self._clear_download_references)
         self.choose_model_button.setEnabled(False)
+        self.reset_model_button.setEnabled(False)
         self.download_model_button.setEnabled(False)
         self.cancel_download_button.setEnabled(True)
         self.close_button.setEnabled(False)
@@ -254,44 +268,34 @@ class SystemCheckDialog(QDialog):
         )
 
         self.component_table.setRowCount(len(diagnostics.components))
-        guidance: list[str] = []
+        missing_components: list[str] = []
         for row, component in enumerate(diagnostics.components):
-            status = "Available" if component.available else "Unavailable"
-            status_item = QTableWidgetItem(status)
-            status_item.setForeground(QColor("#18794e" if component.available else "#b42318"))
-            details = "; ".join(component.details)
-            if component.error:
-                details = f"{details}; {component.error}" if details else component.error
-
             self.component_table.setItem(row, 0, QTableWidgetItem(component.label))
+            status_item = QTableWidgetItem("Available" if component.available else "Unavailable")
+            status_item.setForeground(QColor("#18794e" if component.available else "#b42318"))
             self.component_table.setItem(row, 1, status_item)
-            self.component_table.setItem(row, 2, QTableWidgetItem(component.version or ""))
-            self.component_table.setItem(row, 3, QTableWidgetItem(details))
-
+            details = []
+            if component.version:
+                details.append(component.version)
+            details.extend(component.details)
+            if component.error:
+                details.append(component.error)
+            self.component_table.setItem(row, 2, QTableWidgetItem("; ".join(details)))
             if not component.available:
-                guidance.append(
-                    f"{component.label}: "
-                    f"{installation_guidance(component.key, diagnostics.operating_system)}"
-                )
+                missing_components.append(component.key)
 
-        self.guidance_label.setText(
-            "\n".join(guidance) if guidance else "All optional conversion components are available."
-        )
-        self.save_button.setEnabled(True)
+        guidance = [installation_guidance(component) for component in missing_components]
+        self.guidance_label.setText("\n".join(dict.fromkeys(guidance)))
 
     def choose_report_path(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save diagnostic report",
-            "filing-doc-converter-diagnostics.txt",
+            "Save system report",
+            "filing-document-converter-system-check.txt",
             "Text files (*.txt)",
         )
-        if not path:
-            return
-        try:
+        if path:
             self.save_report(Path(path))
-        except OSError as error:
-            QMessageBox.warning(self, "Save Report", f"The report could not be saved: {error}")
 
     def save_report(self, path: Path) -> None:
         if self._diagnostics is None:

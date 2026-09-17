@@ -11,6 +11,13 @@ MODEL_DIRECTORY_ENV = "FILING_DOC_CONVERTER_MODEL_DIR"
 MODEL_DIRECTORY_SETTING = "models/directory"
 MODEL_READY_MARKER = ".filing-doc-converter-models-ready"
 PACKAGED_DOWNLOADER_NAME = "docling-tools.exe"
+EXPECTED_MODEL_DIRECTORIES = (
+    "docling-project--docling-layout-heron",
+    "docling-project--docling-layout-heron-onnx",
+    "docling-project--docling-models",
+    "docling-project--DocumentFigureClassifier-v2.5",
+    "docling-project--CodeFormulaV2",
+)
 
 
 class ModelManagementError(RuntimeError):
@@ -66,12 +73,32 @@ def save_model_directory(path: str | Path, settings: QSettings | None = None) ->
     return directory
 
 
+def reset_model_directory(settings: QSettings | None = None) -> Path:
+    active_settings = settings if settings is not None else QSettings()
+    active_settings.remove(MODEL_DIRECTORY_SETTING)
+    active_settings.sync()
+    return default_model_directory()
+
+
+def _directory_contains_files(directory: Path) -> bool:
+    return directory.is_dir() and any(item.is_file() for item in directory.rglob("*"))
+
+
+def downloaded_models_complete(path: str | Path) -> bool:
+    directory = _normalise_path(path)
+    return all(
+        _directory_contains_files(directory / relative)
+        for relative in EXPECTED_MODEL_DIRECTORIES
+    )
+
+
 def models_ready(path: str | Path) -> bool:
     directory = _normalise_path(path)
     marker = directory / MODEL_READY_MARKER
-    if not marker.is_file():
-        return False
-    return any(item.is_file() and item != marker for item in directory.rglob("*"))
+    marker_ready = marker.is_file() and any(
+        item.is_file() and item != marker for item in directory.rglob("*")
+    )
+    return marker_ready or downloaded_models_complete(directory)
 
 
 def mark_models_ready(path: str | Path) -> Path:
