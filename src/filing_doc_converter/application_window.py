@@ -1,10 +1,18 @@
+import os
 from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QListWidgetItem, QMessageBox, QPushButton
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QHBoxLayout,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+)
 
+from filing_doc_converter.docling_runtime import DOCLING_OCR_ENV, DOCLING_TABLES_ENV
 from filing_doc_converter.error_dialog import ErrorDetailsDialog
 from filing_doc_converter.main_window import MainWindow
 from filing_doc_converter.model_management import (
@@ -30,6 +38,7 @@ class ApplicationWindow(MainWindow):
         self._model_state_provider = model_state_provider
         super().__init__()
         self.queue.itemClicked.connect(self.show_queue_item_details)
+        self._add_docling_performance_controls()
 
         help_menu = self.menuBar().addMenu("Help")
         self.system_check_action = help_menu.addAction("System Check")
@@ -42,6 +51,26 @@ class ApplicationWindow(MainWindow):
 
         self.refresh_output_availability()
         self._update_open_output_button()
+
+    def _add_docling_performance_controls(self) -> None:
+        self.docling_ocr_checkbox = QCheckBox("OCR scanned pages in AI output")
+        self.docling_ocr_checkbox.setChecked(False)
+        self.docling_ocr_checkbox.setToolTip(
+            "Enable only for scanned PDFs without selectable text. This is slower."
+        )
+        self.table_structure_checkbox = QCheckBox("Analyze table structure")
+        self.table_structure_checkbox.setChecked(False)
+        self.table_structure_checkbox.setToolTip(
+            "Improves complex tables but adds substantial CPU processing time."
+        )
+
+        options_row = QHBoxLayout()
+        options_row.addWidget(self.docling_ocr_checkbox)
+        options_row.addWidget(self.table_structure_checkbox)
+        options_row.addStretch()
+        output_parent = self.markdown_checkbox.parentWidget()
+        if output_parent is not None and output_parent.layout() is not None:
+            output_parent.layout().addLayout(options_row)
 
     def set_output_directory(self, path: Path) -> None:
         super().set_output_directory(path)
@@ -72,6 +101,8 @@ class ApplicationWindow(MainWindow):
             else:
                 checkbox.setToolTip("")
 
+        self.docling_ocr_checkbox.setEnabled(availability.docling)
+        self.table_structure_checkbox.setEnabled(availability.docling)
         self.update_process_button()
 
     def apply_diagnostics(self, diagnostics: SystemDiagnostics) -> None:
@@ -108,6 +139,13 @@ class ApplicationWindow(MainWindow):
         if not detail:
             return
         ErrorDetailsDialog(detail, self).exec()
+
+    def start_processing(self) -> None:
+        os.environ[DOCLING_OCR_ENV] = "1" if self.docling_ocr_checkbox.isChecked() else "0"
+        os.environ[DOCLING_TABLES_ENV] = (
+            "1" if self.table_structure_checkbox.isChecked() else "0"
+        )
+        super().start_processing()
 
     def open_output_directory(self) -> None:
         output_directory = self.output_directory
