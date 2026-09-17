@@ -15,10 +15,11 @@ def test_docling_output_requires_installed_local_models(monkeypatch) -> None:
         "load_model_directory",
         lambda: ModelDirectoryState(Path("models"), "settings", False),
     )
+    monkeypatch.setattr(system_diagnostics, "resolve_ocrmypdf_executable", lambda: "/tools/ocrmypdf")
     monkeypatch.setattr(
-        system_diagnostics.shutil,
-        "which",
-        lambda executable: f"/tools/{executable}",
+        system_diagnostics,
+        "resolve_tesseract_executable",
+        lambda: ("/tools/tesseract", "system"),
     )
 
     availability = system_diagnostics.check_output_availability()
@@ -40,7 +41,12 @@ def test_docling_output_is_available_when_package_and_models_are_ready(monkeypat
         "load_model_directory",
         lambda: ModelDirectoryState(Path("models"), "settings", True),
     )
-    monkeypatch.setattr(system_diagnostics.shutil, "which", lambda executable: None)
+    monkeypatch.setattr(system_diagnostics, "resolve_ocrmypdf_executable", lambda: None)
+    monkeypatch.setattr(
+        system_diagnostics,
+        "resolve_tesseract_executable",
+        lambda: (None, "missing"),
+    )
 
     availability = system_diagnostics.check_output_availability()
 

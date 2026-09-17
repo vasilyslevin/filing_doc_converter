@@ -1,0 +1,15 @@
+{
+  "distribution": "UB-Mannheim.TesseractOCR",
+  "version": "5.4.0.20240606",
+  "download_url": "https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe",
+  "sha256": "c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9",
+  "languages": [
+    "eng",
+    "osd"
+  ],
+  "required_runtime_files": [
+    "tesseract.exe",
+    "libtesseract-5.dll",
+    "libleptonica-6.dll"
+  ]
+}

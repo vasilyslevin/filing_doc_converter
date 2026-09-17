@@ -1,14 +1,20 @@
 import importlib.metadata as importlib_metadata
 import importlib.util as importlib_util
 import platform
-import shutil
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from PySide6 import __version__ as PYSIDE_VERSION
 
 from filing_doc_converter import __version__
-from filing_doc_converter.model_management import load_model_directory
+from filing_doc_converter.model_management import is_packaged_application, load_model_directory
+from filing_doc_converter.ocr_runtime import (
+    build_ocr_environment,
+    find_bundled_tesseract,
+    resolve_ocrmypdf_executable,
+    resolve_tesseract_executable,
+)
 
 
 @dataclass(frozen=True)
@@ -66,7 +72,12 @@ class SystemDiagnostics:
         return "\n".join(lines) + "\n"
 
 
-def _run_command(command: list[str], *, timeout: float = 30.0) -> tuple[bool, str, str | None]:
+def _run_command(
+    command: list[str],
+    *,
+    timeout: float = 30.0,
+    env: Mapping[str, str] | None = None,
+) -> tuple[bool, str, str | None]:
     try:
         completed = subprocess.run(
             command,
@@ -77,6 +88,7 @@ def _run_command(command: list[str], *, timeout: float = 30.0) -> tuple[bool, st
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
+            env=dict(env) if env is not None else None,
         )
     except subprocess.TimeoutExpired:
         return False, "", "Command timed out"
@@ -113,15 +125,15 @@ def check_output_availability() -> OutputAvailability:
     elif not models_ready:
         reason = "Local Docling models are not ready. Open Help > System Check and download models."
     return OutputAvailability(
-        searchable_pdf=shutil.which("ocrmypdf") is not None
-        and shutil.which("tesseract") is not None,
+        searchable_pdf=resolve_ocrmypdf_executable() is not None
+        and resolve_tesseract_executable()[0] is not None,
         docling=docling_installed and models_ready,
         docling_reason=reason,
     )
 
 
 def check_ocrmypdf() -> ComponentStatus:
-    executable = shutil.which("ocrmypdf")
+    executable = resolve_ocrmypdf_executable()
     if executable is None:
         return ComponentStatus("ocrmypdf", "OCRmyPDF", False, error="Executable not found")
 
@@ -136,35 +148,58 @@ def check_ocrmypdf() -> ComponentStatus:
 
 
 def check_tesseract() -> ComponentStatus:
-    executable = shutil.which("tesseract")
+    bundled = find_bundled_tesseract()
+    executable, source = resolve_tesseract_executable()
     if executable is None:
-        return ComponentStatus("tesseract", "Tesseract OCR", False, error="Executable not found")
+        packaged_windows = is_packaged_application() and platform.system() == "Windows"
+        missing_error = (
+            "Bundled runtime not found in tools/tesseract"
+            if packaged_windows
+            else "Executable not found"
+        )
+        details = ("Source: bundled",) if packaged_windows else ()
+        return ComponentStatus(
+            "tesseract",
+            "Tesseract OCR",
+            False,
+            details=details,
+            error=missing_error,
+        )
 
-    succeeded, output, error = _run_command([executable, "--version"])
+    succeeded, output, error = _run_command(
+        [executable, "--version"],
+        env=build_ocr_environment(),
+    )
     if not succeeded:
         return ComponentStatus(
             "tesseract",
             "Tesseract OCR",
             False,
             version=_first_line(output),
+            details=(f"Source: {source}",),
             error=error,
         )
 
     languages_ok, languages_output, languages_error = _run_command(
-        [executable, "--list-langs"]
+        [executable, "--list-langs"],
+        env=build_ocr_environment(),
     )
     languages = ()
     if languages_ok:
         lines = [line.strip() for line in languages_output.splitlines() if line.strip()]
         languages = tuple(lines[1:] if lines and "available languages" in lines[0].lower() else lines)
 
-    details = (f"Languages: {', '.join(languages)}",) if languages else ()
+    details_list = [f"Source: {source}"]
+    if bundled is not None:
+        details_list.append("Bundled tessdata: tools/tesseract/tessdata")
+    if languages:
+        details_list.append(f"Languages: {', '.join(languages)}")
     return ComponentStatus(
         "tesseract",
         "Tesseract OCR",
         True,
         version=_first_line(output),
-        details=details,
+        details=tuple(details_list),
         error=languages_error,
     )
 
@@ -195,7 +230,10 @@ def installation_guidance(component: str, operating_system: str | None = None) -
     if system == "Darwin":
         return "Install OCR tools with Homebrew: brew install ocrmypdf tesseract"
     if system == "Windows":
-        return "Install OCRmyPDF and Tesseract, then ensure both executables are on PATH."
+        return (
+            "If using the packaged app, reinstall it if bundled OCR tools are missing. "
+            "For source installs, install OCRmyPDF and Tesseract and ensure executables are on PATH."
+        )
     return "Install OCRmyPDF and Tesseract using your Linux distribution package manager."
 
 

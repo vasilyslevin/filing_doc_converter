@@ -25,7 +25,9 @@ This file is a development-stage notice. Before publishing packaged executables,
 - Purpose: Optical character recognition engine used by OCRmyPDF.
 - License: Apache License 2.0.
 - Project: https://github.com/tesseract-ocr/tesseract
-- Distribution review: Include required copyright, license, and notice materials when bundled.
+- Windows bundle source: https://github.com/UB-Mannheim/tesseract/releases/tag/v5.4.0.20240606 (`tesseract-ocr-w64-setup-5.4.0.20240606.exe`, SHA-256 `c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9`).
+- Bundled language data: `eng.traineddata`, `osd.traineddata`.
+- Distribution review: Include required copyright, license, and notice materials for Tesseract and bundled native dependencies (for example Leptonica/image libraries).
 
 ### Docling
 

@@ -12,7 +12,11 @@ from filing_doc_converter.system_diagnostics import (
 
 
 def test_ocrmypdf_version_success(monkeypatch) -> None:
-    monkeypatch.setattr(system_diagnostics.shutil, "which", lambda name: "/tools/ocrmypdf")
+    monkeypatch.setattr(
+        system_diagnostics,
+        "resolve_ocrmypdf_executable",
+        lambda: "/tools/ocrmypdf",
+    )
     monkeypatch.setattr(
         system_diagnostics,
         "_run_command",
@@ -26,7 +30,7 @@ def test_ocrmypdf_version_success(monkeypatch) -> None:
 
 
 def test_missing_executable(monkeypatch) -> None:
-    monkeypatch.setattr(system_diagnostics.shutil, "which", lambda name: None)
+    monkeypatch.setattr(system_diagnostics, "resolve_ocrmypdf_executable", lambda: None)
 
     result = check_ocrmypdf()
 
@@ -48,20 +52,47 @@ def test_command_timeout(monkeypatch) -> None:
 
 
 def test_tesseract_languages(monkeypatch) -> None:
-    monkeypatch.setattr(system_diagnostics.shutil, "which", lambda name: "/tools/tesseract")
+    monkeypatch.setattr(
+        system_diagnostics,
+        "find_bundled_tesseract",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        system_diagnostics,
+        "resolve_tesseract_executable",
+        lambda: ("/tools/tesseract", "system"),
+    )
+    monkeypatch.setattr(system_diagnostics, "build_ocr_environment", dict)
     responses = iter(
         [
             (True, "tesseract 5.5.1\n", None),
             (True, "List of available languages in data path (2):\neng\nspa\n", None),
         ]
     )
-    monkeypatch.setattr(system_diagnostics, "_run_command", lambda command: next(responses))
+    monkeypatch.setattr(
+        system_diagnostics,
+        "_run_command",
+        lambda command, **kwargs: next(responses),
+    )
 
     result = check_tesseract()
 
     assert result.available
     assert result.version == "tesseract 5.5.1"
-    assert result.details == ("Languages: eng, spa",)
+    assert result.details == ("Source: system", "Languages: eng, spa")
+
+
+def test_packaged_missing_tesseract_bundle_has_specific_error(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics, "find_bundled_tesseract", lambda: None)
+    monkeypatch.setattr(system_diagnostics, "resolve_tesseract_executable", lambda: (None, "missing"))
+    monkeypatch.setattr(system_diagnostics, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(system_diagnostics.platform, "system", lambda: "Windows")
+
+    result = check_tesseract()
+
+    assert not result.available
+    assert result.details == ("Source: bundled",)
+    assert "Bundled runtime not found" in (result.error or "")
 
 
 def test_missing_docling_package(monkeypatch) -> None:
@@ -114,5 +145,5 @@ def test_diagnostic_report_contains_no_sensitive_paths() -> None:
 
 def test_platform_specific_guidance() -> None:
     assert "Homebrew" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin")
-    assert "PATH" in system_diagnostics.installation_guidance("tesseract", "Windows")
+    assert "packaged app" in system_diagnostics.installation_guidance("tesseract", "Windows")
     assert "package manager" in system_diagnostics.installation_guidance("ocrmypdf", "Linux")

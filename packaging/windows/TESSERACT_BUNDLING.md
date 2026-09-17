@@ -1,27 +1,66 @@
-# Optional Tesseract runtime bundle
+# Bundled Windows Tesseract runtime
 
-The Windows packaging script can include a local Tesseract runtime without downloading software during the build.
+Windows packaging uses a pinned UB Mannheim Tesseract release:
 
-## Supported source
+- Distribution: `UB-Mannheim/tesseract`
+- Version: `5.4.0.20240606`
+- Source URL: `https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe`
+- SHA-256: `c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9`
+- Lock file: `packaging/windows/tesseract-bundle.lock.json`
 
-The prepared bundle is pinned to `UB-Mannheim.TesseractOCR` version `5.4.0.20240606`. The source directory must contain:
+## What gets bundled
+
+The build places Tesseract under `tools/tesseract` in the PyInstaller distribution and verifies:
 
 - `tesseract.exe`
-- Runtime DLL files
-- `tessdata/eng.traineddata`
+- Required runtime DLLs listed in `tesseract-bundle.lock.json`
+- Minimal language data required by this app:
+  - `eng.traineddata`
+  - `osd.traineddata`
 
-For the currently tested installation, the source is `D:\apps\Tesseract-OCR`.
+No runtime download occurs when the packaged app runs.
 
-## Build command
+## Build usage
+
+Default (download pinned release during packaging):
+
+```powershell
+./packaging/windows/build.ps1
+```
+
+Optional local source override (still validated against pinned runtime expectations):
 
 ```powershell
 ./packaging/windows/build.ps1 -TesseractRoot "D:\apps\Tesseract-OCR"
 ```
 
-The runtime is copied into `tools/tesseract` in the application distribution. At startup, the packaged application prepends that directory to `PATH` and sets `TESSDATA_PREFIX` to its bundled `tessdata` directory. A system Tesseract installation remains the fallback when no runtime is bundled.
+## Checksum refresh procedure
 
-The bundling script validates the pinned version and confirms that English language data can be loaded. The generated SHA-256 manifest includes `tesseract.exe` and `eng.traineddata` when bundling is enabled.
+1. Choose the new UB Mannheim release and update `version`, `download_url`, and `required_runtime_files` in `tesseract-bundle.lock.json`.
+2. Download the installer and compute SHA-256:
 
-## Distribution review
+```powershell
+$Url = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe"
+Invoke-WebRequest -Uri $Url -OutFile tesseract-installer.exe
+(Get-FileHash -LiteralPath .\tesseract-installer.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+```
 
-This switch is intentionally optional. CI does not yet download or redistribute the UB Mannheim installer. Before enabling it for published artifacts, verify the installer checksum and include all required Tesseract, Leptonica, image-library, and trained-data license notices.
+3. Copy the digest into `sha256` in the lock file.
+4. Re-run the Windows package workflow and confirm bundled smoke tests pass.
+
+## Local verification commands
+
+After `build.ps1` completes:
+
+```powershell
+$Dist = Join-Path $PWD "build\windows\dist\FilingDocumentConverter"
+$env:TESSDATA_PREFIX = Join-Path $Dist "tools\tesseract\tessdata"
+& (Join-Path $Dist "tools\tesseract\tesseract.exe") --version
+& (Join-Path $Dist "tools\tesseract\tesseract.exe") --list-langs
+```
+
+Expected languages include `eng` and `osd`.
+
+## Licensing obligations
+
+Redistributing this package requires preserving applicable license/notice files for Tesseract and bundled native dependencies (including Leptonica and image libraries) and keeping `THIRD_PARTY_NOTICES.md` aligned with packaged contents.

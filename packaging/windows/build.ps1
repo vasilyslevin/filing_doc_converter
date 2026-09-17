@@ -137,13 +137,14 @@ try {
         throw "Packaged Docling runtime check failed with exit code $LASTEXITCODE."
     }
 
-    $TesseractBundled = -not [string]::IsNullOrWhiteSpace($TesseractRoot)
-    if ($TesseractBundled) {
-        $TesseractDestination = Join-Path $Distribution "tools\tesseract"
-        & $TesseractBundler -SourceDirectory $TesseractRoot -DestinationDirectory $TesseractDestination
-        if ($LASTEXITCODE -ne 0) {
-            throw "Tesseract bundling failed with exit code $LASTEXITCODE."
-        }
+    $TesseractDestination = Join-Path $Distribution "tools\tesseract"
+    if ([string]::IsNullOrWhiteSpace($TesseractRoot)) {
+        & $TesseractBundler -DestinationDirectory $TesseractDestination -WorkDirectory (Join-Path $OutputDirectory "tesseract")
+    } else {
+        & $TesseractBundler -SourceDirectory $TesseractRoot -DestinationDirectory $TesseractDestination -WorkDirectory (Join-Path $OutputDirectory "tesseract")
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "Tesseract bundling failed with exit code $LASTEXITCODE."
     }
 
     Copy-Item (Join-Path $RepositoryRoot "LICENSE") $Distribution -Force
@@ -158,13 +159,12 @@ try {
         "THIRD_PARTY_NOTICES.md",
         "PACKAGING_NOTES.txt"
     )
-    if ($TesseractBundled) {
-        $HashTargets += @(
-            "tools\tesseract\tesseract.exe",
-            "tools\tesseract\tessdata\eng.traineddata",
-            "tools\tesseract\BUNDLE_INFO.txt"
-        )
-    }
+    $HashTargets += @(
+        "tools\tesseract\tesseract.exe",
+        "tools\tesseract\tessdata\eng.traineddata",
+        "tools\tesseract\tessdata\osd.traineddata",
+        "tools\tesseract\BUNDLE_INFO.txt"
+    )
     $Hashes = foreach ($RelativePath in $HashTargets) {
         $Target = Join-Path $Distribution $RelativePath
         if (-not (Test-Path $Target -PathType Leaf)) {

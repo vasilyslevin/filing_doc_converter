@@ -60,7 +60,11 @@ jobs:
             "LICENSE",
             "THIRD_PARTY_NOTICES.md",
             "PACKAGING_NOTES.txt",
-            "SHA256SUMS.txt"
+            "SHA256SUMS.txt",
+            "tools\\tesseract\\tesseract.exe",
+            "tools\\tesseract\\tessdata\\eng.traineddata",
+            "tools\\tesseract\\tessdata\\osd.traineddata",
+            "tools\\tesseract\\BUNDLE_INFO.txt"
           )
           foreach ($Name in $RequiredFiles) {
             $Path = Join-Path $env:DIST_DIR $Name
@@ -93,6 +97,22 @@ jobs:
           & (Join-Path $env:DIST_DIR "ocrmypdf.exe") --version
           if ($LASTEXITCODE -ne 0) {
             throw "OCRmyPDF companion failed with exit code $LASTEXITCODE."
+          }
+          $BundledTesseract = Join-Path $env:DIST_DIR "tools\\tesseract\\tesseract.exe"
+          if (-not (Test-Path $BundledTesseract -PathType Leaf)) {
+            throw "Bundled Tesseract executable is missing."
+          }
+          $env:TESSDATA_PREFIX = Join-Path $env:DIST_DIR "tools\\tesseract\\tessdata"
+          & $BundledTesseract --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Bundled Tesseract version check failed with exit code $LASTEXITCODE."
+          }
+          $Languages = & $BundledTesseract --list-langs 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Bundled Tesseract language listing failed with exit code $LASTEXITCODE."
+          }
+          if ($Languages -notcontains "eng" -or $Languages -notcontains "osd") {
+            throw "Bundled Tesseract missing required language data (eng, osd)."
           }
 
       - name: Create ZIP artifact
