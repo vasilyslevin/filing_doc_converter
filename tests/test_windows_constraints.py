@@ -33,5 +33,5 @@ def test_windows_package_install_uses_constraints() -> None:
     workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
 
     assert "-c constraints-windows.txt" in requirements
-    assert "../..[full,dev]" in requirements
+    assert ".[full,dev]" in requirements
     assert "pip install -r packaging/windows/requirements-build.txt" in workflow
