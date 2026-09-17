@@ -29,7 +29,11 @@ def prepare_packaged_path() -> None:
 
     path_entries = os.environ.get("PATH", "").split(os.pathsep)
     existing = {entry.casefold() for entry in path_entries}
-    additions = [str(path) for path in preferred_directories if str(path).casefold() not in existing]
+    additions = [
+        str(path)
+        for path in preferred_directories
+        if str(path).casefold() not in existing
+    ]
     if additions:
         os.environ["PATH"] = os.pathsep.join([*additions, *path_entries])
 

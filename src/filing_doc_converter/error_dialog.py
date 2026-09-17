@@ -15,7 +15,10 @@ class ErrorDetailsDialog(QDialog):
         self.setWindowTitle("Processing failure details")
         self.resize(720, 420)
 
-        message = QLabel("The document could not be processed. Copy the details below when reporting the issue.")
+        message = QLabel(
+            "The document could not be processed. "
+            "Copy the details below when reporting the issue."
+        )
         message.setWordWrap(True)
 
         self.details_edit = QPlainTextEdit()
