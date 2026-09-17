@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QMessageBox, QPushButton
+from PySide6.QtWidgets import QListWidgetItem, QMessageBox, QPushButton
 
 from filing_doc_converter.main_window import MainWindow
 from filing_doc_converter.model_management import (
@@ -28,6 +28,7 @@ class ApplicationWindow(MainWindow):
         self._availability_provider = availability_provider
         self._model_state_provider = model_state_provider
         super().__init__()
+        self.queue.itemClicked.connect(self.show_queue_item_details)
 
         help_menu = self.menuBar().addMenu("Help")
         self.system_check_action = help_menu.addAction("System Check")
@@ -98,6 +99,14 @@ class ApplicationWindow(MainWindow):
         dialog.diagnostics_updated.connect(self.apply_diagnostics)
         dialog.exec()
         self.refresh_output_availability()
+
+    def show_queue_item_details(self, item: QListWidgetItem) -> None:
+        if not item.text().startswith("Failed:"):
+            return
+        detail = item.toolTip().strip()
+        if not detail:
+            return
+        QMessageBox.critical(self, "Processing failure details", detail)
 
     def open_output_directory(self) -> None:
         output_directory = self.output_directory
