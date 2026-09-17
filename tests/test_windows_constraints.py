@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).parents[1]
 CONSTRAINTS = ROOT / "packaging" / "windows" / "constraints-windows.txt"
 BUILD_REQUIREMENTS = ROOT / "packaging" / "windows" / "requirements-build.txt"
