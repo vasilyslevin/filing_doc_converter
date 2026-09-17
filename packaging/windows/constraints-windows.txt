@@ -12,6 +12,6 @@ ocrmypdf==17.12.1
 rapidocr==3.9.2
 onnxruntime==1.23.2
 numpy==2.3.3
-Pillow==11.3.0
+Pillow==12.3.0
 pyinstaller==6.22.3
 pyinstaller-hooks-contrib==2026.7
