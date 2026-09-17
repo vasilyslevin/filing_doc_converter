@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from filing_doc_converter.error_dialog import ErrorDetailsDialog
 from filing_doc_converter.model_downloader import ModelDownloadWorker
 from filing_doc_converter.model_management import (
     ModelDirectoryState,
@@ -245,7 +246,12 @@ class SystemCheckDialog(QDialog):
         )
 
     def _on_download_failed(self, message: str) -> None:
-        QMessageBox.warning(self, "Model download failed", message)
+        ErrorDetailsDialog(
+            message,
+            self,
+            title="Model download failed",
+            summary="The model download did not complete.",
+        ).exec()
 
     def _on_download_cancelled(self) -> None:
         self.model_status_label.setText(
