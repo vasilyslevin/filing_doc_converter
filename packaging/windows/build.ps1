@@ -15,6 +15,9 @@ $SourceRoot = Join-Path $RepositoryRoot "src"
 $GuiEntry = Join-Path $PSScriptRoot "FilingDocumentConverter.py"
 $ToolsEntry = Join-Path $PSScriptRoot "docling-tools.py"
 $OcrEntry = Join-Path $SourceRoot "filing_doc_converter\ocrmypdf_entry.py"
+$IconGenerator = Join-Path $PSScriptRoot "create_icon.py"
+$IconSource = Join-Path $SourceRoot "filing_doc_converter\assets\app_icon.svg"
+$IconPath = Join-Path $OutputDirectory "FilingDocumentConverter.ico"
 $StagingDirectory = Join-Path $OutputDirectory "dist"
 $WorkDirectory = Join-Path $OutputDirectory "work"
 $SpecDirectory = Join-Path $OutputDirectory "spec"
@@ -25,6 +28,11 @@ if (Test-Path $OutputDirectory) {
 New-Item -ItemType Directory -Path $StagingDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $WorkDirectory -Force | Out-Null
 New-Item -ItemType Directory -Path $SpecDirectory -Force | Out-Null
+
+& $Python $IconGenerator $IconPath
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $IconPath -PathType Leaf)) {
+    throw "Could not generate the Windows application icon."
+}
 
 $CommonArguments = @(
     "-m", "PyInstaller",
@@ -43,6 +51,10 @@ $DoclingArguments = @(
     "--collect-all=transformers",
     "--hidden-import=docling.cli.tools",
     "--hidden-import=docling.document_converter"
+)
+$GuiArguments = $DoclingArguments + @(
+    "--icon=$IconPath",
+    "--add-data=$IconSource;filing_doc_converter/assets"
 )
 $OcrArguments = @(
     "--collect-all=ocrmypdf",
@@ -71,7 +83,7 @@ function Invoke-PackageBuild {
 
 Push-Location $RepositoryRoot
 try {
-    Invoke-PackageBuild -Name "FilingDocumentConverter" -EntryPoint $GuiEntry -ConsoleMode "--windowed" -AdditionalArguments $DoclingArguments
+    Invoke-PackageBuild -Name "FilingDocumentConverter" -EntryPoint $GuiEntry -ConsoleMode "--windowed" -AdditionalArguments $GuiArguments
     Invoke-PackageBuild -Name "docling-tools" -EntryPoint $ToolsEntry -ConsoleMode "--console" -AdditionalArguments $DoclingArguments
     Invoke-PackageBuild -Name "ocrmypdf" -EntryPoint $OcrEntry -ConsoleMode "--console" -AdditionalArguments $OcrArguments
 

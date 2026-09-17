@@ -127,7 +127,21 @@ class ApplicationWindow(MainWindow):
                 "The operating system could not open the output folder.",
             )
 
+    def _on_file_started(self, index: int, total: int, name: str) -> None:
+        super()._on_file_started(index, total, name)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setFormat(f"Processing {index}/{total}: {name}")
+
+    def _on_file_succeeded(self, index: int, output_files: object) -> None:
+        self.progress_bar.setRange(0, max(1, len(self._pdf_paths)))
+        super()._on_file_succeeded(index, output_files)
+
+    def _on_file_failed(self, index: int, error: str) -> None:
+        self.progress_bar.setRange(0, max(1, len(self._pdf_paths)))
+        super()._on_file_failed(index, error)
+
     def _on_processing_finished(self, cancelled: bool, succeeded: int, failed: int) -> None:
+        self.progress_bar.setRange(0, max(1, len(self._pdf_paths)))
         super()._on_processing_finished(cancelled, succeeded, failed)
         self._update_open_output_button()
 
