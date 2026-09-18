@@ -50,15 +50,19 @@ def test_windows_workflow_caches_pinned_tesseract_installer() -> None:
     assert "tesseract-bundle.lock.json" in workflow
 
 
-def test_bundle_script_uses_bounded_download_and_wait() -> None:
+def test_bundle_script_uses_7zip_extraction_with_timeout() -> None:
     script = BUNDLE_SCRIPT.read_text(encoding="utf-8")
 
     assert "--connect-timeout 30" in script
     assert "--max-time 300" in script
     assert "--retry 3" in script
-    assert "Wait-Process -Id $InstallProcess.Id -Timeout $InstallerTimeoutSeconds" in script
-    assert "taskkill.exe /PID $InstallProcess.Id /T /F" in script
-    assert '"/CURRENTUSER"' in script
+    assert "Get-Command 7z.exe" in script
+    assert "dl.7z" in script
+    assert "Wait-Process -Id $ExtractionProcess.Id -Timeout $TimeoutSeconds" in script
+    assert "taskkill.exe /PID $ExtractionProcess.Id /T /F" in script
+    assert "Start-Process -FilePath $ArchivePath" not in script
+    assert "Remove-Item $PluginDirectory -Recurse -Force" in script
+    assert "Expected exactly one extracted Tesseract root containing tesseract.exe" in script
     assert "Write-Host \"[bundle-tesseract]" in script
 
 

@@ -16,14 +16,13 @@ $DownloadUrl = "$($LockData.download_url)"
 $ExpectedSha256 = "$($LockData.sha256)".ToLowerInvariant()
 $RequiredRuntimeFiles = @($LockData.required_runtime_files)
 $BundledLanguages = @($LockData.languages)
-
 if ([string]::IsNullOrWhiteSpace($ExpectedVersion) -or [string]::IsNullOrWhiteSpace($DownloadUrl) -or [string]::IsNullOrWhiteSpace($ExpectedSha256)) {
     throw "Lock file is missing required fields (version, download_url, sha256)."
 }
 if ($BundledLanguages.Count -eq 0) {
     throw "Lock file must specify at least one required language."
 }
-$InstallerTimeoutSeconds = 600
+$ExtractionTimeoutSeconds = 600
 
 function Write-Stage {
     param([string]$Message)
@@ -68,6 +67,75 @@ function Download-Installer {
         }
     }
     throw "Fallback download failed after 3 attempts: $LastError"
+}
+
+function Expand-InstallerArchive {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArchivePath,
+        [Parameter(Mandatory = $true)]
+        [string]$ExtractDirectory,
+        [Parameter(Mandatory = $true)]
+        [int]$TimeoutSeconds
+    )
+
+    $SevenZip = Get-Command 7z.exe -ErrorAction SilentlyContinue
+    if ($null -eq $SevenZip) {
+        throw "7z.exe was not found on PATH. Cannot extract Tesseract archive."
+    }
+    $SevenZipInput = Join-Path ([System.IO.Path]::GetDirectoryName($ArchivePath)) "dl.7z"
+    Copy-Item $ArchivePath $SevenZipInput -Force
+
+    $Arguments = @(
+        "x",
+        "-y",
+        "-bd",
+        "-bso1",
+        "-bse1",
+        "-o$ExtractDirectory",
+        $SevenZipInput
+    )
+    Write-Stage "Launching 7-Zip extraction process."
+    $ExtractionProcess = Start-Process -FilePath $SevenZip.Source -ArgumentList $Arguments -PassThru
+    $ExtractionFinished = $true
+    try {
+        Wait-Process -Id $ExtractionProcess.Id -Timeout $TimeoutSeconds -ErrorAction Stop
+    } catch {
+        $ExtractionFinished = $false
+    }
+    if (-not $ExtractionFinished) {
+        Write-Stage "7-Zip extraction timed out after $TimeoutSeconds seconds. Terminating process tree."
+        & taskkill.exe /PID $ExtractionProcess.Id /T /F | Out-Null
+        throw "7-Zip extraction timed out after $TimeoutSeconds seconds (PID $($ExtractionProcess.Id))."
+    }
+    if ($ExtractionProcess.ExitCode -ne 0) {
+        throw "7-Zip extraction failed with exit code $($ExtractionProcess.ExitCode)."
+    }
+    Write-Stage "7-Zip extraction process completed."
+}
+
+function Resolve-TesseractRoot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExtractDirectory
+    )
+
+    $Candidates = @(
+        Get-ChildItem -Path $ExtractDirectory -Filter "tesseract.exe" -File -Recurse |
+            Where-Object {
+                $_.FullName -notlike "*\`$PLUGINSDIR\*" -and $_.FullName -notlike "*\`$PLUGINSDIR"
+            } |
+            ForEach-Object { $_.Directory.FullName } |
+            Sort-Object -Unique
+    )
+    if ($Candidates.Count -eq 0) {
+        throw "No extracted Tesseract root containing tesseract.exe was found."
+    }
+    if ($Candidates.Count -ne 1) {
+        $Listed = $Candidates -join "; "
+        throw "Expected exactly one extracted Tesseract root containing tesseract.exe, found $($Candidates.Count): $Listed"
+    }
+    return $Candidates[0]
 }
 
 $BundleRoot = if ([string]::IsNullOrWhiteSpace($WorkDirectory)) {
@@ -120,36 +188,17 @@ if (-not $SourceProvided) {
         Remove-Item $ExtractDirectory -Recurse -Force
     }
     New-Item -ItemType Directory -Path $ExtractDirectory -Force | Out-Null
-    $InstallerLogPath = Join-Path $BundleRoot "installer.log"
-    $InstallArgs = @(
-        "/SP-",
-        "/VERYSILENT",
-        "/SUPPRESSMSGBOXES",
-        "/NORESTART",
-        "/NOICONS",
-        "/CURRENTUSER",
-        "/LOG=`"$InstallerLogPath`"",
-        "/DIR=$ExtractDirectory"
-    )
-    Write-Stage "Launching installer extraction process."
-    $InstallProcess = Start-Process -FilePath $ArchivePath -ArgumentList $InstallArgs -PassThru
-    $InstallerFinished = $true
-    try {
-        Wait-Process -Id $InstallProcess.Id -Timeout $InstallerTimeoutSeconds -ErrorAction Stop
-    } catch {
-        $InstallerFinished = $false
+    Write-Stage "Extracting checksum-verified installer archive using 7-Zip."
+    Expand-InstallerArchive -ArchivePath $ArchivePath -ExtractDirectory $ExtractDirectory -TimeoutSeconds $ExtractionTimeoutSeconds
+    $PluginDirectory = Join-Path $ExtractDirectory '$PLUGINSDIR'
+    if (Test-Path $PluginDirectory -PathType Container) {
+        Write-Stage "Removing extraction-only directory: $PluginDirectory"
+        Remove-Item $PluginDirectory -Recurse -Force
     }
-    if (-not $InstallerFinished) {
-        Write-Stage "Installer timed out after $InstallerTimeoutSeconds seconds. Terminating process tree."
-        & taskkill.exe /PID $InstallProcess.Id /T /F | Out-Null
-        throw "Installer extraction timed out after $InstallerTimeoutSeconds seconds (PID $($InstallProcess.Id))."
-    }
-    Write-Stage "Installer extraction process completed."
-    if ($InstallProcess.ExitCode -ne 0) {
-        throw "Installer extraction failed with exit code $($InstallProcess.ExitCode)."
-    }
-    $SourceDirectory = $ExtractDirectory
-    Write-Stage "Installer extraction succeeded."
+
+    Write-Stage "Locating extracted Tesseract root."
+    $SourceDirectory = Resolve-TesseractRoot -ExtractDirectory $ExtractDirectory
+    Write-Stage "Using extracted Tesseract root: $SourceDirectory"
 }
 
 $Executable = Join-Path $SourceDirectory "tesseract.exe"
@@ -157,10 +206,13 @@ $Tessdata = Join-Path $SourceDirectory "tessdata"
 if (-not (Test-Path $Executable -PathType Leaf)) {
     throw "Tesseract executable not found: $Executable"
 }
+
+Write-Stage "Checking extracted Tesseract version."
 $VersionOutput = (& $Executable --version 2>&1 | Select-Object -First 1).ToString()
 if ($VersionOutput -notmatch [regex]::Escape($ExpectedVersion)) {
     throw "Expected Tesseract $ExpectedVersion, but found: $VersionOutput"
 }
+
 foreach ($Relative in $RequiredRuntimeFiles) {
     $RuntimePath = Join-Path $SourceDirectory $Relative
     if (-not (Test-Path $RuntimePath -PathType Leaf)) {
@@ -178,12 +230,16 @@ if (Test-Path $DestinationDirectory) {
     Remove-Item $DestinationDirectory -Recurse -Force
 }
 New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
-Write-Stage "Copying Tesseract runtime files into package directory."
-Copy-Item (Join-Path $SourceDirectory "*") $DestinationDirectory -Force
-Get-ChildItem $DestinationDirectory -Filter "unins*.exe" -File -ErrorAction SilentlyContinue |
-    Remove-Item -Force -ErrorAction SilentlyContinue
-Get-ChildItem $DestinationDirectory -Filter "unins*.dat" -File -ErrorAction SilentlyContinue |
-    Remove-Item -Force -ErrorAction SilentlyContinue
+Write-Stage "Copying required Tesseract runtime files into package directory."
+foreach ($Relative in $RequiredRuntimeFiles) {
+    $SourcePath = Join-Path $SourceDirectory $Relative
+    $DestinationPath = Join-Path $DestinationDirectory $Relative
+    $DestinationParent = Split-Path -Path $DestinationPath -Parent
+    if (-not [string]::IsNullOrWhiteSpace($DestinationParent)) {
+        New-Item -ItemType Directory -Path $DestinationParent -Force | Out-Null
+    }
+    Copy-Item $SourcePath $DestinationPath -Force
+}
 
 $DestinationTessdata = Join-Path $DestinationDirectory "tessdata"
 if (Test-Path $DestinationTessdata) {
@@ -192,11 +248,6 @@ if (Test-Path $DestinationTessdata) {
 New-Item -ItemType Directory -Path $DestinationTessdata -Force | Out-Null
 foreach ($Language in $BundledLanguages) {
     Copy-Item (Join-Path $Tessdata "$Language.traineddata") $DestinationTessdata -Force
-}
-
-foreach ($Pattern in @("LICENSE*", "README*", "AUTHORS*")) {
-    Get-ChildItem $SourceDirectory -Filter $Pattern -File -ErrorAction SilentlyContinue |
-        Copy-Item -Destination $DestinationDirectory -Force
 }
 
 $BundledExecutable = Join-Path $DestinationDirectory "tesseract.exe"
