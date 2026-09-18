@@ -97,6 +97,37 @@ def test_existing_output_is_not_overwritten(tmp_path: Path) -> None:
     assert destination.read_bytes() == b"existing"
 
 
+def test_run_ocr_uses_subprocess_environment(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "filing.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
+    output_directory = tmp_path / "output"
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs.get("env")
+            Path(command[-1]).write_bytes(b"%PDF-1.4\n")
+
+        def communicate(self, timeout=None):
+            return "", ""
+
+    monkeypatch.setattr(ocr_pipeline, "find_ocrmypdf", lambda: "/tools/ocrmypdf")
+    monkeypatch.setattr(
+        ocr_pipeline,
+        "build_ocr_environment",
+        lambda: {"PATH": "bundle", "TESSDATA_PREFIX": "bundle/tessdata"},
+    )
+    monkeypatch.setattr(ocr_pipeline.subprocess, "Popen", FakeProcess)
+
+    result = run_ocr(source, output_directory)
+
+    assert result.command[0] == "/tools/ocrmypdf"
+    assert captured["env"] == {"PATH": "bundle", "TESSDATA_PREFIX": "bundle/tessdata"}
+
+
 def test_docling_missing_models_are_reported(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "filing.pdf"
     source.write_bytes(b"%PDF-1.4\n")

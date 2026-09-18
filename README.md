@@ -52,7 +52,7 @@ python -m pip install -e ".[docling]"
 python -m pip install -e ".[full]"
 ```
 
-OCRmyPDF also requires an OCR engine and supporting system components. Tesseract must be installed and available on `PATH`.
+OCRmyPDF also requires an OCR engine and supporting system components. For source installs, Tesseract must be installed and available on `PATH`.
 
 ### macOS
 
@@ -65,7 +65,7 @@ python -m pip install -e ".[docling]"
 
 ### Windows
 
-Install 64-bit Python, OCRmyPDF, and Tesseract according to their official Windows instructions. Ensure OCRmyPDF and Tesseract are available on `PATH`, then install the application extras:
+Install 64-bit Python, OCRmyPDF, and Tesseract according to their official Windows instructions, then install the application extras:
 
 ```powershell
 python -m pip install -e ".[full]"
@@ -146,7 +146,7 @@ These controls reduce unintended network access but are not a substitute for ope
 7. Select **Process Documents**.
 8. Use **Open Output Folder** after processing completes.
 
-Unavailable output formats are disabled automatically. Searchable PDF depends only on OCRmyPDF and Tesseract. Markdown and JSON require both Docling and completed local model setup.
+Unavailable output formats are disabled automatically. Searchable PDF depends only on OCRmyPDF and Tesseract (bundled in the packaged Windows build, system-provided for source installs). Markdown and JSON require both Docling and completed local model setup.
 
 ## Output files
 
@@ -177,7 +177,7 @@ The System Check reports:
 
 - Application, operating-system, architecture, Python, and PySide6 versions.
 - OCRmyPDF availability and version.
-- Tesseract availability, version, and installed OCR languages.
+- Tesseract source (bundled or system), version, and installed OCR languages.
 - Docling availability and version.
 - Local model readiness.
 - Whether the model directory is selected, default, or managed by an environment setting.
@@ -207,13 +207,11 @@ pytest
 ruff check .
 ```
 
-GitHub Actions runs both commands on Ubuntu, Windows, and macOS. Tests mock optional converters and model downloads; CI does not download Docling models or require OCRmyPDF.
+GitHub Actions runs both commands on Ubuntu, Windows, and macOS. Tests mock optional converters and model downloads; CI does not download Docling models or require OCRmyPDF in ordinary test jobs.
 
 ## Packaging direction
 
-Windows packaging is the next milestone after PR #4 is merged and the native offline smoke test passes. The initial target is a folder-based build rather than a single-file executable, followed by an installer tested on a clean Windows account or virtual machine.
-
-The packaging work must decide which native tools and model artifacts are bundled versus installed separately, generate an SBOM, include all required third-party notices, and verify uninstall behavior.
+The Windows packaging workflow now bundles a pinned UB-Mannheim Tesseract runtime (including `eng` and `osd` language data) and verifies it during build and smoke test. See `packaging/windows/TESSERACT_BUNDLING.md` for source pinning, checksum refresh, and local verification steps.
 
 ## Privacy and security
 

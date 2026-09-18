@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +11,7 @@ from filing_doc_converter.docling_runtime import (
     LocalModelsUnavailableError,
     local_pdf_converter,
 )
+from filing_doc_converter.ocr_runtime import build_ocr_environment, resolve_ocrmypdf_executable
 
 
 class OcrError(RuntimeError):
@@ -59,7 +59,7 @@ class DoclingResult:
 
 
 def find_ocrmypdf() -> str | None:
-    return shutil.which("ocrmypdf")
+    return resolve_ocrmypdf_executable()
 
 
 def searchable_output_path(input_path: Path, output_directory: Path) -> Path:
@@ -259,6 +259,7 @@ def run_ocr(
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=build_ocr_environment(),
     )
 
     while True:

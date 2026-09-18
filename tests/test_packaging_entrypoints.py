@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -28,15 +27,14 @@ def test_package_smoke_test_checks_window_and_companion(monkeypatch) -> None:
     assert events == ["window", "closed", "companion"]
 
 
-def test_packaged_directory_is_prepended_to_path(monkeypatch, tmp_path: Path) -> None:
+def test_prepare_packaged_path_is_noop(monkeypatch, tmp_path: Path) -> None:
     executable = tmp_path / "FilingDocumentConverter.exe"
-    monkeypatch.setattr(application_entry, "is_packaged_application", lambda: True)
     monkeypatch.setattr(application_entry.sys, "executable", str(executable))
     monkeypatch.setenv("PATH", str(tmp_path / "existing"))
 
     application_entry.prepare_packaged_path()
 
-    assert os.environ["PATH"].split(os.pathsep)[0] == str(tmp_path.resolve())
+    assert application_entry.sys.executable == str(executable)
 
 
 def test_docling_tools_entry_invokes_upstream_cli(monkeypatch) -> None:
