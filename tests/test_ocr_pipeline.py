@@ -118,14 +118,37 @@ def test_run_ocr_uses_subprocess_environment(monkeypatch, tmp_path: Path) -> Non
     monkeypatch.setattr(
         ocr_pipeline,
         "build_ocr_environment",
-        lambda: {"PATH": "bundle", "TESSDATA_PREFIX": "bundle/tessdata"},
+        lambda profile: {"PATH": "bundle", "TESSDATA_PREFIX": "bundle/tessdata"},
     )
+    monkeypatch.setattr(ocr_pipeline, "resolve_tesseract_profile", lambda: object())
     monkeypatch.setattr(ocr_pipeline.subprocess, "Popen", FakeProcess)
 
     result = run_ocr(source, output_directory)
 
     assert result.command[0] == "/tools/ocrmypdf"
     assert captured["env"] == {"PATH": "bundle", "TESSDATA_PREFIX": "bundle/tessdata"}
+
+
+def test_run_ocr_failure_includes_exit_code_and_full_output(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "filing.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
+
+    class FailedProcess:
+        returncode = 4
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def communicate(self, timeout=None):
+            return ("stdout text", "stderr text")
+
+    monkeypatch.setattr(ocr_pipeline, "find_ocrmypdf", lambda: "/tools/ocrmypdf")
+    monkeypatch.setattr(ocr_pipeline, "resolve_tesseract_profile", lambda: None)
+    monkeypatch.setattr(ocr_pipeline, "build_ocr_environment", lambda profile: {})
+    monkeypatch.setattr(ocr_pipeline.subprocess, "Popen", FailedProcess)
+
+    with pytest.raises(OcrError, match=r"exit code 4"):
+        run_ocr(source, tmp_path / "output")
 
 
 def test_docling_missing_models_are_reported(monkeypatch, tmp_path: Path) -> None:

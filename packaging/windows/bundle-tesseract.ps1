@@ -245,6 +245,11 @@ foreach ($Language in $BundledLanguages) {
         throw "Required Tesseract language data not found: $DataFile"
     }
 }
+$SourceConfigs = Join-Path $Tessdata "configs"
+if (-not (Test-Path (Join-Path $SourceConfigs "hocr") -PathType Leaf)) {
+    throw "Required Tesseract config file not found: tessdata/configs/hocr"
+}
+$SourceTessconfigs = Join-Path $Tessdata "tessconfigs"
 
 if (Test-Path $DestinationDirectory) {
     Remove-Item $DestinationDirectory -Recurse -Force
@@ -267,6 +272,13 @@ if (Test-Path $DestinationTessdata) {
 New-Item -ItemType Directory -Path $DestinationTessdata -Force | Out-Null
 foreach ($Language in $BundledLanguages) {
     Copy-Item (Join-Path $Tessdata "$Language.traineddata") $DestinationTessdata -Force
+}
+Copy-Item $SourceConfigs (Join-Path $DestinationTessdata "configs") -Recurse -Force
+if (Test-Path $SourceTessconfigs -PathType Container) {
+    Copy-Item $SourceTessconfigs (Join-Path $DestinationTessdata "tessconfigs") -Recurse -Force
+}
+if (-not (Test-Path (Join-Path $DestinationTessdata "configs\hocr") -PathType Leaf)) {
+    throw "Bundled Tesseract missing required config file: tessdata/configs/hocr"
 }
 
 $BundledExecutable = Join-Path $DestinationDirectory "tesseract.exe"
@@ -301,6 +313,7 @@ Write-Stage "Bundled language verification succeeded."
     "SHA-256: $ExpectedSha256",
     "Languages: $($BundledLanguages -join ', ')",
     "Source directory: $SourceDirectory",
-    "Runtime language data: tessdata"
+    "Runtime language data: tessdata",
+    "Required configs: tessdata/configs/hocr"
 ) | Set-Content (Join-Path $DestinationDirectory "BUNDLE_INFO.txt") -Encoding utf8
 Write-Stage "Tesseract bundle metadata written."

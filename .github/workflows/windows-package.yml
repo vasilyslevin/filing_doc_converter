@@ -133,6 +133,31 @@ jobs:
           if ($Languages -notcontains "eng" -or $Languages -notcontains "osd") {
             throw "Bundled Tesseract missing required language data (eng, osd)."
           }
+          $HocrConfig = Join-Path $env:TESSDATA_PREFIX "configs\\hocr"
+          if (-not (Test-Path $HocrConfig -PathType Leaf)) {
+            throw "Bundled Tesseract missing required config: tessdata/configs/hocr."
+          }
+          $SmokeInput = Join-Path $env:RUNNER_TEMP "tesseract-smoke.pgm"
+          @(
+            "P2",
+            "3 3",
+            "255",
+            "255 255 255",
+            "255 0 255",
+            "255 255 255"
+          ) | Set-Content -Path $SmokeInput -Encoding ascii
+          $SmokeOutBase = Join-Path $env:RUNNER_TEMP "tesseract-smoke-out"
+          & $BundledTesseract $SmokeInput $SmokeOutBase -l eng hocr
+          if ($LASTEXITCODE -ne 0) {
+            throw "Bundled Tesseract hOCR smoke test failed with exit code $LASTEXITCODE."
+          }
+          $HocrOutput = "$SmokeOutBase.hocr"
+          if (-not (Test-Path $HocrOutput -PathType Leaf)) {
+            throw "Bundled Tesseract hOCR smoke test did not produce output."
+          }
+          if ((Get-Content $HocrOutput -Raw).Trim().Length -eq 0) {
+            throw "Bundled Tesseract hOCR smoke output is empty."
+          }
 
       - name: Build standalone folder (Lite)
         shell: pwsh

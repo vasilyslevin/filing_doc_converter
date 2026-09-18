@@ -1,13 +1,55 @@
 import os
 from pathlib import Path
 
+from PySide6.QtCore import QSettings
+
 from filing_doc_converter import ocr_runtime
+from filing_doc_converter.ocr_runtime import (
+    TESSERACT_PROFILE_MODE_SETTING,
+    TESSERACT_PROFILE_PATH_SETTING,
+    TesseractInstallation,
+    TesseractRuntimeProfile,
+)
+
+
+def _complete_tessdata(root: Path) -> Path:
+    tessdata = root / "tessdata" / "configs"
+    tessdata.mkdir(parents=True)
+    (tessdata / "hocr").write_text("", encoding="utf-8")
+    return root / "tessdata"
+
+
+def _installation(label: str, source: str, root: Path, exe_name: str = "tesseract.exe") -> TesseractInstallation:
+    executable = root / exe_name
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.touch()
+    tessdata = _complete_tessdata(root)
+    return TesseractInstallation(
+        label=label,
+        source=source,
+        executable=executable,
+        tessdata=tessdata,
+        languages=("eng", "spa"),
+    )
+
+
+def test_find_bundled_tesseract_requires_hocr_config(monkeypatch, tmp_path: Path) -> None:
+    package_directory = tmp_path / "package"
+    tesseract_directory = package_directory / "tools" / "tesseract"
+    (tesseract_directory / "tessdata").mkdir(parents=True)
+    (tesseract_directory / "tesseract.exe").touch()
+    monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(ocr_runtime.sys, "executable", str(package_directory / "app.exe"))
+
+    bundled = ocr_runtime.find_bundled_tesseract()
+
+    assert bundled is None
 
 
 def test_find_bundled_tesseract_prefers_packaged_folder(monkeypatch, tmp_path: Path) -> None:
     package_directory = tmp_path / "package"
     tesseract_directory = package_directory / "tools" / "tesseract"
-    (tesseract_directory / "tessdata").mkdir(parents=True)
+    _complete_tessdata(tesseract_directory)
     (tesseract_directory / "tesseract.exe").touch()
     monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: True)
     monkeypatch.setattr(ocr_runtime.sys, "executable", str(package_directory / "app.exe"))
@@ -20,62 +62,63 @@ def test_find_bundled_tesseract_prefers_packaged_folder(monkeypatch, tmp_path: P
     assert bundled.executable == tesseract_directory / "tesseract.exe"
 
 
-def test_find_bundled_tesseract_uses_meipass_fallback(monkeypatch, tmp_path: Path) -> None:
-    meipass_directory = tmp_path / "meipass"
-    tesseract_directory = meipass_directory / "tools" / "tesseract"
-    (tesseract_directory / "tessdata").mkdir(parents=True)
-    (tesseract_directory / "tesseract.exe").touch()
-    monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: True)
-    monkeypatch.setattr(ocr_runtime.sys, "executable", str(tmp_path / "package" / "app.exe"))
-    monkeypatch.setattr(ocr_runtime.sys, "_MEIPASS", str(meipass_directory), raising=False)
+def test_build_ocr_environment_uses_profile_specific_values(tmp_path: Path) -> None:
+    installation = _installation("System", "path", tmp_path / "system")
+    profile = TesseractRuntimeProfile(installation, "automatic")
 
-    bundled = ocr_runtime.find_bundled_tesseract()
+    env = ocr_runtime.build_ocr_environment(profile, {"PATH": str(tmp_path / "bin")})
 
-    assert bundled is not None
-    assert bundled.root == tesseract_directory
-
-
-def test_build_ocr_environment_only_changes_subprocess_env(monkeypatch, tmp_path: Path) -> None:
-    package_directory = tmp_path / "package"
-    tesseract_directory = package_directory / "tools" / "tesseract"
-    tessdata_directory = tesseract_directory / "tessdata"
-    tessdata_directory.mkdir(parents=True)
-    (tesseract_directory / "tesseract.exe").touch()
-    monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: True)
-    monkeypatch.setattr(ocr_runtime.sys, "executable", str(package_directory / "app.exe"))
-    monkeypatch.delenv("TESSDATA_PREFIX", raising=False)
-
-    env = ocr_runtime.build_ocr_environment({"PATH": str(tmp_path / "system-tools")})
-
-    assert env["PATH"].split(os.pathsep)[0] == str(tesseract_directory)
-    assert env["TESSDATA_PREFIX"] == str(tessdata_directory)
+    assert env["PATH"].split(os.pathsep)[0] == str(installation.executable.parent)
+    assert env["TESSDATA_PREFIX"] == str(installation.tessdata)
     assert "TESSDATA_PREFIX" not in os.environ
 
 
-def test_resolve_tesseract_prefers_bundled_over_system(monkeypatch, tmp_path: Path) -> None:
-    package_directory = tmp_path / "package"
-    tesseract_directory = package_directory / "tools" / "tesseract"
-    (tesseract_directory / "tessdata").mkdir(parents=True)
-    bundled_executable = tesseract_directory / "tesseract.exe"
-    bundled_executable.touch()
-    monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: True)
-    monkeypatch.setattr(ocr_runtime.sys, "executable", str(package_directory / "app.exe"))
-    monkeypatch.setattr(ocr_runtime.shutil, "which", lambda name: str(tmp_path / "system" / "tesseract.exe"))
+def test_build_ocr_environment_does_not_set_incomplete_tessdata(tmp_path: Path) -> None:
+    executable = tmp_path / "manual" / "tesseract.exe"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    tessdata = executable.parent / "tessdata"
+    tessdata.mkdir(parents=True)
+    installation = TesseractInstallation(
+        label="Manual",
+        source="manual",
+        executable=executable,
+        tessdata=tessdata,
+        languages=("eng",),
+    )
+    profile = TesseractRuntimeProfile(installation, "manual")
 
-    executable, source = ocr_runtime.resolve_tesseract_executable()
+    env = ocr_runtime.build_ocr_environment(profile, {"PATH": str(tmp_path / "bin"), "TESSDATA_PREFIX": "old"})
 
-    assert executable == str(bundled_executable)
-    assert source == "bundled"
+    assert env["TESSDATA_PREFIX"] == "old"
 
 
-def test_resolve_tesseract_uses_system_for_source_install(monkeypatch) -> None:
-    monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: False)
-    monkeypatch.setattr(ocr_runtime.shutil, "which", lambda name: "/usr/bin/tesseract")
+def test_resolve_profile_prefers_explicit_system_selection(tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    bundled = _installation("Bundled", "bundled", tmp_path / "bundle")
+    system = _installation("System", "path", tmp_path / "system", exe_name="tesseract")
+    settings.setValue(TESSERACT_PROFILE_MODE_SETTING, "system")
+    settings.setValue(TESSERACT_PROFILE_PATH_SETTING, str(system.executable))
 
-    executable, source = ocr_runtime.resolve_tesseract_executable()
+    profile = ocr_runtime.resolve_tesseract_profile(settings, installations=(bundled, system))
 
-    assert executable == "/usr/bin/tesseract"
-    assert source == "system"
+    assert profile is not None
+    assert profile.installation.executable == system.executable
+    assert profile.installation.source == "path"
+
+
+def test_resolve_profile_automatic_prefers_bundled_then_system(tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    bundled = _installation("Bundled", "bundled", tmp_path / "bundle")
+    system = _installation("System", "path", tmp_path / "system", exe_name="tesseract")
+
+    profile = ocr_runtime.resolve_tesseract_profile(settings, installations=(bundled, system))
+    assert profile is not None
+    assert profile.installation.source == "bundled"
+
+    profile_without_bundle = ocr_runtime.resolve_tesseract_profile(settings, installations=(system,))
+    assert profile_without_bundle is not None
+    assert profile_without_bundle.installation.source == "path"
 
 
 def test_resolve_ocrmypdf_prefers_packaged_companion(monkeypatch, tmp_path: Path) -> None:

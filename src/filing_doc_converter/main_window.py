@@ -265,9 +265,7 @@ class MainWindow(QMainWindow):
         self._set_activity("Preparing")
 
         self._thread = QThread(self)
-        self._worker = ProcessingWorker(
-            tuple(self._pdf_paths),
-            self._output_directory,
+        self._worker = self._create_processing_worker(
             create_searchable_pdf=create_searchable_pdf,
             create_markdown=create_markdown,
             create_json=create_json,
@@ -377,3 +375,22 @@ class MainWindow(QMainWindow):
 
     def _set_activity(self, value: str) -> None:
         self.activity_label.setText(f"Activity: {value}")
+
+    def _create_processing_worker(
+        self,
+        *,
+        create_searchable_pdf: bool,
+        create_markdown: bool,
+        create_json: bool,
+        executable: str | None,
+    ) -> ProcessingWorker:
+        if self._output_directory is None:
+            raise RuntimeError("Output directory is required before starting processing.")
+        return ProcessingWorker(
+            tuple(self._pdf_paths),
+            self._output_directory,
+            create_searchable_pdf=create_searchable_pdf,
+            create_markdown=create_markdown,
+            create_json=create_json,
+            executable=executable,
+        )

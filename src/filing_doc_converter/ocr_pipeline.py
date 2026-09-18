@@ -11,7 +11,12 @@ from filing_doc_converter.docling_runtime import (
     LocalModelsUnavailableError,
     local_pdf_converter,
 )
-from filing_doc_converter.ocr_runtime import build_ocr_environment, resolve_ocrmypdf_executable
+from filing_doc_converter.ocr_runtime import (
+    TesseractRuntimeProfile,
+    build_ocr_environment,
+    resolve_ocrmypdf_executable,
+    resolve_tesseract_profile,
+)
 from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 
@@ -227,6 +232,7 @@ def run_ocr(
     *,
     language: str = "eng",
     executable: str | None = None,
+    tesseract_profile: TesseractRuntimeProfile | None = None,
     cancel_event: Event | None = None,
 ) -> OcrResult:
     source = input_path.resolve()
@@ -253,6 +259,7 @@ def run_ocr(
         executable=resolved_executable,
         language=language,
     )
+    profile = tesseract_profile or resolve_tesseract_profile()
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -260,7 +267,7 @@ def run_ocr(
         text=True,
         encoding="utf-8",
         errors="replace",
-        env=build_ocr_environment(),
+        env=build_ocr_environment(profile),
         **background_subprocess_kwargs(),
     )
 
@@ -281,8 +288,14 @@ def run_ocr(
 
     if process.returncode != 0:
         destination.unlink(missing_ok=True)
-        detail = stderr.strip() or stdout.strip() or "Unknown OCRmyPDF error"
-        raise OcrError(f"OCRmyPDF failed for {source.name}: {detail}")
+        stderr_text = (stderr or "").strip()
+        stdout_text = (stdout or "").strip()
+        detail = stderr_text or stdout_text or "Unknown OCRmyPDF error"
+        if stderr_text and stdout_text and stderr_text != stdout_text:
+            detail = f"{stderr_text}\n\n{stdout_text}"
+        raise OcrError(
+            f"OCRmyPDF failed for {source.name} (exit code {process.returncode}): {detail}"
+        )
     if not destination.is_file():
         raise OcrError(f"OCRmyPDF completed without creating: {destination}")
 
