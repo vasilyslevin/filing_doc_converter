@@ -24,6 +24,25 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Read Tesseract lock metadata
+        shell: pwsh
+        run: |
+          $Lock = Get-Content "packaging/windows/tesseract-bundle.lock.json" -Raw | ConvertFrom-Json
+          $InstallerName = [System.IO.Path]::GetFileName("$($Lock.download_url)")
+          "TESSERACT_LOCK_VERSION=$($Lock.version)" | Out-File $env:GITHUB_ENV -Append
+          "TESSERACT_LOCK_SHA256=$($Lock.sha256.ToLowerInvariant())" | Out-File $env:GITHUB_ENV -Append
+          "TESSERACT_INSTALLER_NAME=$InstallerName" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Create Tesseract cache directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path "build/windows/tesseract/download" -Force | Out-Null
+
+      - name: Cache pinned Tesseract installer
+        uses: actions/cache@v4
+        with:
+          path: build/windows/tesseract/download/${{ env.TESSERACT_INSTALLER_NAME }}
+          key: windows-tesseract-installer-${{ runner.os }}-${{ env.TESSERACT_LOCK_VERSION }}-${{ env.TESSERACT_LOCK_SHA256 }}
+
       - name: Install application and build dependencies
         shell: pwsh
         run: |
