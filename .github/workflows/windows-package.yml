@@ -56,20 +56,20 @@ jobs:
       - name: Test
         run: pytest
 
-      - name: Build standalone folder
+      - name: Build standalone folder (Full)
         shell: pwsh
         run: ./packaging/windows/build.ps1
 
-      - name: Locate distribution
+      - name: Locate Full distribution
         shell: pwsh
         run: |
           $Distribution = Join-Path $PWD "build\windows\dist\FilingDocumentConverter"
           if (-not (Test-Path $Distribution -PathType Container)) {
             throw "PyInstaller distribution directory was not produced."
           }
-          "DIST_DIR=$Distribution" | Out-File $env:GITHUB_ENV -Append
+          "DIST_DIR_FULL=$Distribution" | Out-File $env:GITHUB_ENV -Append
 
-      - name: Verify package contents
+      - name: Verify Full package contents
         shell: pwsh
         run: |
           $RequiredFiles = @(
@@ -86,7 +86,7 @@ jobs:
             "tools\\tesseract\\BUNDLE_INFO.txt"
           )
           foreach ($Name in $RequiredFiles) {
-            $Path = Join-Path $env:DIST_DIR $Name
+            $Path = Join-Path $env:DIST_DIR_FULL $Name
             if (-not (Test-Path $Path -PathType Leaf)) {
               throw "Missing package file: $Name"
             }
@@ -100,28 +100,28 @@ jobs:
           TRANSFORMERS_OFFLINE: "1"
           DO_NOT_TRACK: "1"
         run: |
-          $GuiPath = Join-Path $env:DIST_DIR "FilingDocumentConverter.exe"
+          $GuiPath = Join-Path $env:DIST_DIR_FULL "FilingDocumentConverter.exe"
           $GuiProcess = Start-Process -FilePath $GuiPath -ArgumentList "--package-smoke-test" -Wait -PassThru
           if ($GuiProcess.ExitCode -ne 0) {
             throw "GUI package smoke test failed with exit code $($GuiProcess.ExitCode)."
           }
-          & (Join-Path $env:DIST_DIR "docling-tools.exe") --help
+          & (Join-Path $env:DIST_DIR_FULL "docling-tools.exe") --help
           if ($LASTEXITCODE -ne 0) {
             throw "Docling tools help failed with exit code $LASTEXITCODE."
           }
-          & (Join-Path $env:DIST_DIR "docling-tools.exe") models download --help
+          & (Join-Path $env:DIST_DIR_FULL "docling-tools.exe") models download --help
           if ($LASTEXITCODE -ne 0) {
             throw "Docling model-download help failed with exit code $LASTEXITCODE."
           }
-          & (Join-Path $env:DIST_DIR "ocrmypdf.exe") --version
+          & (Join-Path $env:DIST_DIR_FULL "ocrmypdf.exe") --version
           if ($LASTEXITCODE -ne 0) {
             throw "OCRmyPDF companion failed with exit code $LASTEXITCODE."
           }
-          $BundledTesseract = Join-Path $env:DIST_DIR "tools\\tesseract\\tesseract.exe"
+          $BundledTesseract = Join-Path $env:DIST_DIR_FULL "tools\\tesseract\\tesseract.exe"
           if (-not (Test-Path $BundledTesseract -PathType Leaf)) {
             throw "Bundled Tesseract executable is missing."
           }
-          $env:TESSDATA_PREFIX = Join-Path $env:DIST_DIR "tools\\tesseract\\tessdata"
+          $env:TESSDATA_PREFIX = Join-Path $env:DIST_DIR_FULL "tools\\tesseract\\tessdata"
           & $BundledTesseract --version
           if ($LASTEXITCODE -ne 0) {
             throw "Bundled Tesseract version check failed with exit code $LASTEXITCODE."
@@ -134,17 +134,65 @@ jobs:
             throw "Bundled Tesseract missing required language data (eng, osd)."
           }
 
-      - name: Create ZIP artifact
+      - name: Build standalone folder (Lite)
+        shell: pwsh
+        run: ./packaging/windows/build.ps1 -PackageFlavor Lite -OutputDirectory build/windows-lite
+
+      - name: Locate Lite distribution
         shell: pwsh
         run: |
-          $ZipPath = Join-Path $PWD "FilingDocumentConverter-Windows-x64.zip"
-          Compress-Archive -Path $env:DIST_DIR -DestinationPath $ZipPath -CompressionLevel Optimal
-          "PACKAGE_ZIP=$ZipPath" | Out-File $env:GITHUB_ENV -Append
+          $Distribution = Join-Path $PWD "build\windows-lite\dist\FilingDocumentConverter"
+          if (-not (Test-Path $Distribution -PathType Container)) {
+            throw "Lite PyInstaller distribution directory was not produced."
+          }
+          "DIST_DIR_LITE=$Distribution" | Out-File $env:GITHUB_ENV -Append
 
-      - name: Upload unsigned development package
+      - name: Verify Lite package contents
+        shell: pwsh
+        run: |
+          $RequiredFiles = @(
+            "FilingDocumentConverter.exe",
+            "docling-tools.exe",
+            "LICENSE",
+            "THIRD_PARTY_NOTICES.md",
+            "PACKAGING_NOTES.txt",
+            "SHA256SUMS.txt"
+          )
+          foreach ($Name in $RequiredFiles) {
+            $Path = Join-Path $env:DIST_DIR_LITE $Name
+            if (-not (Test-Path $Path -PathType Leaf)) {
+              throw "Missing Lite package file: $Name"
+            }
+          }
+          if (Test-Path (Join-Path $env:DIST_DIR_LITE "ocrmypdf.exe") -PathType Leaf) {
+            throw "Lite package unexpectedly contains ocrmypdf.exe."
+          }
+          if (Test-Path (Join-Path $env:DIST_DIR_LITE "tools\\tesseract\\tesseract.exe") -PathType Leaf) {
+            throw "Lite package unexpectedly contains bundled Tesseract."
+          }
+
+      - name: Create ZIP artifacts
+        shell: pwsh
+        run: |
+          $ZipPathFull = Join-Path $PWD "FilingDocumentConverter-Windows-x64.zip"
+          Compress-Archive -Path $env:DIST_DIR_FULL -DestinationPath $ZipPathFull -CompressionLevel Optimal
+          "PACKAGE_ZIP_FULL=$ZipPathFull" | Out-File $env:GITHUB_ENV -Append
+          $ZipPathLite = Join-Path $PWD "FilingDocumentConverter-Windows-x64-Lite.zip"
+          Compress-Archive -Path $env:DIST_DIR_LITE -DestinationPath $ZipPathLite -CompressionLevel Optimal
+          "PACKAGE_ZIP_LITE=$ZipPathLite" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Upload unsigned development package (Full)
         uses: actions/upload-artifact@v4
         with:
           name: FilingDocumentConverter-Windows-x64
-          path: ${{ env.PACKAGE_ZIP }}
+          path: ${{ env.PACKAGE_ZIP_FULL }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload unsigned development package (Lite)
+        uses: actions/upload-artifact@v4
+        with:
+          name: FilingDocumentConverter-Windows-x64-Lite
+          path: ${{ env.PACKAGE_ZIP_LITE }}
           if-no-files-found: error
           retention-days: 14

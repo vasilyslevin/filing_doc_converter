@@ -12,6 +12,7 @@ from filing_doc_converter.docling_runtime import (
     local_pdf_converter,
 )
 from filing_doc_converter.ocr_runtime import build_ocr_environment, resolve_ocrmypdf_executable
+from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 
 class OcrError(RuntimeError):
@@ -260,6 +261,7 @@ def run_ocr(
         encoding="utf-8",
         errors="replace",
         env=build_ocr_environment(),
+        **background_subprocess_kwargs(),
     )
 
     while True:

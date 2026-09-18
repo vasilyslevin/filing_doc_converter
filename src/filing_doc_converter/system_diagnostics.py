@@ -15,6 +15,7 @@ from filing_doc_converter.ocr_runtime import (
     resolve_ocrmypdf_executable,
     resolve_tesseract_executable,
 )
+from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,7 @@ def _run_command(
             errors="replace",
             timeout=timeout,
             env=dict(env) if env is not None else None,
+            **background_subprocess_kwargs(),
         )
     except subprocess.TimeoutExpired:
         return False, "", "Command timed out"

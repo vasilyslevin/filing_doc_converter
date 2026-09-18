@@ -14,6 +14,7 @@ Filing Document Converter is a local-first desktop application for converting le
 - Original-file and existing-output protection.
 - Stable output names and PDF page-break markers.
 - System Check dialog with component versions and OCR languages.
+- Guided dependency setup with one-line status and copyable setup details.
 - Explicit local-model setup and download consent.
 - Configurable local model directory.
 - Offline-by-default Docling conversion using prefetched artifacts.
@@ -120,6 +121,8 @@ The model setup action runs an argument list equivalent to:
 docling-tools models download -o <selected-directory>
 ```
 
+System Check keeps a persistent in-window `Status:` line for dependency checks, guided setup, and model downloads. Use **Show Setup Details** to review full sanitized command output and copy it for troubleshooting.
+
 It may connect to model-hosting services used by Docling and its OCR dependencies, including Hugging Face or ModelScope. Those services may receive ordinary connection metadata such as IP address, request time, requested model path, and client metadata.
 
 The downloader is not given queued document paths, document filenames, document content, extracted text, or generated outputs. Model setup and document conversion are separate operations.
@@ -212,6 +215,8 @@ GitHub Actions runs both commands on Ubuntu, Windows, and macOS. Tests mock opti
 ## Packaging direction
 
 The Windows packaging workflow now bundles a pinned UB-Mannheim Tesseract runtime (including `eng` and `osd` language data) and verifies it during build and smoke test. See `packaging/windows/TESSERACT_BUNDLING.md` for source pinning, checksum refresh, and local verification steps.
+
+The workflow also builds a **Lite** Windows package that excludes OCRmyPDF and bundled Tesseract. The Lite package relies on guided dependency setup from **Help > System Check**.
 
 ## Privacy and security
 
