@@ -160,11 +160,19 @@ try {
         "PACKAGING_NOTES.txt"
     )
     $HashTargets += @(
-        "tools\tesseract\tesseract.exe",
-        "tools\tesseract\tessdata\eng.traineddata",
-        "tools\tesseract\tessdata\osd.traineddata",
         "tools\tesseract\BUNDLE_INFO.txt"
     )
+    $TesseractFiles = Get-ChildItem (Join-Path $Distribution "tools\tesseract") -File -Recurse |
+        Sort-Object FullName
+    if ($TesseractFiles.Count -eq 0) {
+        throw "No bundled tesseract files were found for hashing."
+    }
+    $RelativeTesseractFiles = $TesseractFiles |
+        ForEach-Object {
+            $_.FullName.Substring($Distribution.Length + 1)
+        }
+    $HashTargets += $RelativeTesseractFiles
+    $HashTargets = $HashTargets | Sort-Object -Unique
     $Hashes = foreach ($RelativePath in $HashTargets) {
         $Target = Join-Path $Distribution $RelativePath
         if (-not (Test-Path $Target -PathType Leaf)) {

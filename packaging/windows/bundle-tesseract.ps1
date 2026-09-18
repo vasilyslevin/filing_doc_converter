@@ -138,6 +138,25 @@ function Resolve-TesseractRoot {
     return $Candidates[0]
 }
 
+function Invoke-CheckedExecutable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ExecutablePath,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+        [Parameter(Mandatory = $true)]
+        [string]$OperationName
+    )
+
+    $CommandOutput = & $ExecutablePath @Arguments 2>&1
+    $ExitCode = $LASTEXITCODE
+    $OutputText = ($CommandOutput | ForEach-Object { "$_" }) -join [Environment]::NewLine
+    if ($ExitCode -ne 0) {
+        throw "$OperationName failed (exit code $ExitCode). Output:`n$OutputText"
+    }
+    return ,$CommandOutput
+}
+
 $BundleRoot = if ([string]::IsNullOrWhiteSpace($WorkDirectory)) {
     Join-Path ([System.IO.Path]::GetTempPath()) "filing-doc-converter\tesseract-bundle"
 } else {
@@ -208,7 +227,8 @@ if (-not (Test-Path $Executable -PathType Leaf)) {
 }
 
 Write-Stage "Checking extracted Tesseract version."
-$VersionOutput = (& $Executable --version 2>&1 | Select-Object -First 1).ToString()
+$VersionResult = Invoke-CheckedExecutable -ExecutablePath $Executable -Arguments @("--version") -OperationName "Extracted Tesseract version check"
+$VersionOutput = ($VersionResult | Select-Object -First 1).ToString()
 if ($VersionOutput -notmatch [regex]::Escape($ExpectedVersion)) {
     throw "Expected Tesseract $ExpectedVersion, but found: $VersionOutput"
 }
@@ -230,15 +250,14 @@ if (Test-Path $DestinationDirectory) {
     Remove-Item $DestinationDirectory -Recurse -Force
 }
 New-Item -ItemType Directory -Path $DestinationDirectory -Force | Out-Null
-Write-Stage "Copying required Tesseract runtime files into package directory."
-foreach ($Relative in $RequiredRuntimeFiles) {
-    $SourcePath = Join-Path $SourceDirectory $Relative
-    $DestinationPath = Join-Path $DestinationDirectory $Relative
-    $DestinationParent = Split-Path -Path $DestinationPath -Parent
-    if (-not [string]::IsNullOrWhiteSpace($DestinationParent)) {
-        New-Item -ItemType Directory -Path $DestinationParent -Force | Out-Null
-    }
-    Copy-Item $SourcePath $DestinationPath -Force
+Write-Stage "Copying Tesseract executable and all root-level runtime DLLs into package directory."
+$RootDlls = @(Get-ChildItem -Path $SourceDirectory -Filter "*.dll" -File)
+if ($RootDlls.Count -eq 0) {
+    throw "No root-level DLL files were found in extracted Tesseract root: $SourceDirectory"
+}
+Copy-Item $Executable (Join-Path $DestinationDirectory "tesseract.exe") -Force
+foreach ($Dll in $RootDlls) {
+    Copy-Item $Dll.FullName (Join-Path $DestinationDirectory $Dll.Name) -Force
 }
 
 $DestinationTessdata = Join-Path $DestinationDirectory "tessdata"
@@ -254,15 +273,20 @@ $BundledExecutable = Join-Path $DestinationDirectory "tesseract.exe"
 $BundledTessdata = Join-Path $DestinationDirectory "tessdata"
 $PreviousTessdataPrefix = $env:TESSDATA_PREFIX
 try {
+    Write-Stage "Verifying bundled Tesseract version in destination directory."
+    $BundledVersionResult = Invoke-CheckedExecutable -ExecutablePath $BundledExecutable -Arguments @("--version") -OperationName "Bundled Tesseract version check"
+    $BundledVersionLine = ($BundledVersionResult | Select-Object -First 1).ToString()
+    if ($BundledVersionLine -notmatch [regex]::Escape($ExpectedVersion)) {
+        $BundledVersionText = ($BundledVersionResult | ForEach-Object { "$_" }) -join [Environment]::NewLine
+        throw "Bundled Tesseract version mismatch. Expected $ExpectedVersion. Output:`n$BundledVersionText"
+    }
     Write-Stage "Verifying bundled language data with tesseract --list-langs."
     $env:TESSDATA_PREFIX = $BundledTessdata
-    $Languages = & $BundledExecutable --list-langs 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Bundled Tesseract failed to list languages."
-    }
+    $Languages = Invoke-CheckedExecutable -ExecutablePath $BundledExecutable -Arguments @("--list-langs") -OperationName "Bundled Tesseract language listing"
     foreach ($Language in $BundledLanguages) {
         if ($Languages -notcontains $Language) {
-            throw "Bundled Tesseract missing required language: $Language"
+            $LanguageOutput = ($Languages | ForEach-Object { "$_" }) -join [Environment]::NewLine
+            throw "Bundled Tesseract missing required language: $Language. Output:`n$LanguageOutput"
         }
     }
 } finally {

@@ -64,6 +64,24 @@ def test_bundle_script_uses_7zip_extraction_with_timeout() -> None:
     assert "Remove-Item $PluginDirectory -Recurse -Force" in script
     assert "Expected exactly one extracted Tesseract root containing tesseract.exe" in script
     assert "Write-Host \"[bundle-tesseract]" in script
+    assert "Get-ChildItem -Path $SourceDirectory -Filter \"*.dll\" -File" in script
+    assert "No root-level DLL files were found in extracted Tesseract root" in script
+    assert "Copy-Item $Executable (Join-Path $DestinationDirectory \"tesseract.exe\") -Force" in script
+    assert "Copy-Item $Dll.FullName (Join-Path $DestinationDirectory $Dll.Name) -Force" in script
+    assert "Invoke-CheckedExecutable -ExecutablePath $BundledExecutable -Arguments @(\"--version\")" in script
+    assert "Invoke-CheckedExecutable -ExecutablePath $BundledExecutable -Arguments @(\"--list-langs\")" in script
+    assert "failed (exit code $ExitCode). Output:" in script
+    assert "foreach ($Language in $BundledLanguages)" in script
+    assert "Copy-Item (Join-Path $Tessdata \"$Language.traineddata\") $DestinationTessdata -Force" in script
+
+
+def test_windows_build_hashes_full_tesseract_payload() -> None:
+    build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+
+    assert "Get-ChildItem (Join-Path $Distribution \"tools\\tesseract\") -File -Recurse" in build_script
+    assert "No bundled tesseract files were found for hashing." in build_script
+    assert "$HashTargets += $RelativeTesseractFiles" in build_script
+    assert "$HashTargets = $HashTargets | Sort-Object -Unique" in build_script
 
 
 def test_tesseract_lock_contains_version_and_checksum() -> None:
