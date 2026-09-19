@@ -161,7 +161,7 @@ These controls reduce unintended network access but are not a substitute for ope
 7. Select **Process Documents**.
 8. Use **Open Output Folder** after processing completes.
 
-Unavailable output formats are disabled automatically. Searchable PDF depends only on OCRmyPDF and Tesseract (bundled in the packaged Windows build, system-provided for source installs). Markdown and JSON require both Docling and completed local model setup.
+Unavailable output formats are disabled automatically. Searchable PDF depends on OCRmyPDF, Tesseract, and Ghostscript (bundled OCRmyPDF + Tesseract in the packaged Windows Full build; external tools in Windows Lite/macOS/source installs). Markdown and JSON require both Docling and completed local model setup.
 
 ## Output files
 
