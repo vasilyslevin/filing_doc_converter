@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from threading import Event
 
@@ -31,6 +32,13 @@ class ProcessingWorker(QObject):
         language: str = "eng",
         executable: str | None = None,
         tesseract_profile: TesseractRuntimeProfile | None = None,
+        ocr_mode: str = "smart",
+        analysis_mode: str = "auto",
+        docling_ocr: bool = False,
+        docling_device: str = "cpu",
+        ocr_workers: int = 2,
+        parser_threads: int = 2,
+        inference_threads: int = 2,
     ) -> None:
         super().__init__()
         self._input_paths = input_paths
@@ -41,6 +49,13 @@ class ProcessingWorker(QObject):
         self._language = language
         self._executable = executable
         self._tesseract_profile = tesseract_profile
+        self._ocr_mode = ocr_mode
+        self._analysis_mode = analysis_mode
+        self._docling_ocr = docling_ocr
+        self._docling_device = docling_device
+        self._ocr_workers = max(1, ocr_workers)
+        self._parser_threads = max(1, parser_threads)
+        self._inference_threads = max(1, inference_threads)
         self._cancel_event = Event()
 
     @Slot()
@@ -49,6 +64,15 @@ class ProcessingWorker(QObject):
         failed = 0
         cancelled = False
         total = len(self._input_paths)
+        self.stage_changed.emit(
+            "Runtime: "
+            + f"OCR workers={self._ocr_workers}, "
+            + f"parser threads={self._parser_threads}, "
+            + f"inference threads={self._inference_threads}, "
+            + f"device={self._docling_device}, "
+            + f"analysis mode={self._analysis_mode}"
+        )
+        batch_started = time.monotonic()
 
         for index, input_path in enumerate(self._input_paths, start=1):
             if self._cancel_event.is_set():
@@ -57,6 +81,7 @@ class ProcessingWorker(QObject):
 
             self.file_started.emit(index, total, input_path.name)
             success_paths: list[str] = []
+            file_started = time.monotonic()
             try:
                 docling_input = input_path
                 if self._create_searchable_pdf:
@@ -68,9 +93,17 @@ class ProcessingWorker(QObject):
                         executable=self._executable,
                         tesseract_profile=self._tesseract_profile,
                         cancel_event=self._cancel_event,
+                        mode=self._ocr_mode,
+                        ocr_workers=self._ocr_workers,
+                    )
+                    self.stage_changed.emit(
+                        f"OCR mode: {ocr_result.effective_mode.title()} OCR"
                     )
                     docling_input = ocr_result.output_path
                     success_paths.append(str(ocr_result.output_path))
+                    for warning in ocr_result.warnings:
+                        success_paths.append(f"Warning: {warning}")
+                    self._append_timings(success_paths, ocr_result.timings)
 
                 if self._create_markdown or self._create_json:
                     self.stage_changed.emit("Loading models and analyzing pages")
@@ -81,9 +114,23 @@ class ProcessingWorker(QObject):
                         export_json=self._create_json,
                         output_stem=input_path.stem,
                         cancel_event=self._cancel_event,
+                        analysis_mode=self._analysis_mode,
+                        docling_ocr=self._docling_ocr,
+                        device=self._docling_device,
+                        parser_threads=self._parser_threads,
+                        inference_threads=self._inference_threads,
+                    )
+                    self.stage_changed.emit(
+                        f"AI analysis mode: {docling_result.effective_analysis_mode}"
                     )
                     self.stage_changed.emit("Finalizing Markdown/JSON outputs")
                     self._append_docling_outputs(success_paths, docling_result)
+                    for warning in docling_result.warnings:
+                        success_paths.append(f"Warning: {warning}")
+                    self._append_timings(success_paths, docling_result.timings)
+                success_paths.append(
+                    f"Timing: Total per file {time.monotonic() - file_started:.2f}s"
+                )
             except OcrCancelledError:
                 cancelled = True
                 break
@@ -94,6 +141,8 @@ class ProcessingWorker(QObject):
                 succeeded += 1
                 self.file_succeeded.emit(str(input_path), "\n".join(success_paths))
 
+        elapsed = time.monotonic() - batch_started
+        self.stage_changed.emit(f"Timing: Total batch {elapsed:.2f}s")
         self.finished.emit(cancelled, succeeded, failed)
 
     def cancel(self) -> None:
@@ -105,6 +154,11 @@ class ProcessingWorker(QObject):
             outputs.append(str(result.markdown_path))
         if result.json_path is not None:
             outputs.append(str(result.json_path))
+
+    @staticmethod
+    def _append_timings(outputs: list[str], timings: tuple[tuple[str, float], ...]) -> None:
+        for name, seconds in timings:
+            outputs.append(f"Timing: {name} {seconds:.2f}s")
 
 
 OcrWorker = ProcessingWorker

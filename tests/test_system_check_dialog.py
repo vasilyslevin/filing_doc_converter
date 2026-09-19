@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from PySide6.QtCore import Qt
+
 from filing_doc_converter.system_check_dialog import SystemCheckDialog
 from filing_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
 
@@ -51,8 +53,11 @@ def test_refresh_emits_updated_diagnostics(qtbot) -> None:
 def test_dialog_shows_persistent_status_line(qtbot) -> None:
     dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
     qtbot.addWidget(dialog)
+    dialog.show()
 
     assert dialog.activity_status_label.text().startswith("Status:")
+    assert dialog.details_button.isEnabled()
+    assert dialog.activity_status_label.geometry().left() < dialog.details_button.geometry().left()
 
 
 def test_save_report_writes_privacy_safe_text(qtbot, tmp_path: Path) -> None:
@@ -68,3 +73,16 @@ def test_save_report_writes_privacy_safe_text(qtbot, tmp_path: Path) -> None:
     assert "secret.pdf" not in content
     assert "/home/" not in content
     assert "C:\\Users\\" not in content
+
+
+def test_status_row_details_button_opens_shared_dialog_during_active_setup(qtbot) -> None:
+    dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
+    qtbot.addWidget(dialog)
+    dialog._append_setup_detail("setup output line")
+    dialog._set_setup_controls_active(True, model_download=False)
+
+    assert dialog.details_button.isEnabled()
+    qtbot.mouseClick(dialog.details_button, Qt.MouseButton.LeftButton)
+
+    assert dialog._details_dialog.isVisible()
+    assert "setup output line" in dialog._details_dialog.details_edit.toPlainText()

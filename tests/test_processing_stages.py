@@ -42,8 +42,12 @@ def test_worker_reports_ocr_and_docling_stages(monkeypatch, tmp_path: Path) -> N
 
     worker.run()
 
-    assert stages == [
+    assert stages[0].startswith("Runtime: OCR workers=")
+    assert stages[1:5] == [
         "Running OCRmyPDF",
+        "OCR mode: Skip OCR",
         "Loading models and analyzing pages",
-        "Finalizing Markdown/JSON outputs",
+        "AI analysis mode: accurate",
     ]
+    assert "Finalizing Markdown/JSON outputs" in stages
+    assert stages[-1].startswith("Timing: Total batch ")
