@@ -245,8 +245,41 @@ RENAMED_APP_DIR="$DIST_DIR/$APP_NAME"
 mv "$APP_DIR" "$RENAMED_APP_DIR"
 APP_DIR="$RENAMED_APP_DIR"
 
-cp "$DIST_DIR/docling-tools/docling-tools" "$APP_DIR/Contents/MacOS/docling-tools"
-cp "$DIST_DIR/ocrmypdf/ocrmypdf" "$APP_DIR/Contents/MacOS/ocrmypdf"
+copy_companion_runtime() {
+  local companion="$1"
+  local source_dir="$DIST_DIR/$companion"
+  local destination_dir="$APP_DIR/Contents/MacOS"
+  local executable_path="$source_dir/$companion"
+
+  if [[ ! -f "$executable_path" ]]; then
+    echo "Companion executable was not produced: $executable_path" >&2
+    exit 1
+  fi
+
+  cp "$executable_path" "$destination_dir/$companion"
+
+  shopt -s nullglob
+  local payload
+  for payload in "$source_dir"/*; do
+    local name
+    name="$(basename "$payload")"
+    if [[ "$name" == "$companion" ]]; then
+      continue
+    fi
+
+    local destination_path="$destination_dir/$name"
+    if [[ -d "$payload" ]]; then
+      mkdir -p "$destination_path"
+      rsync -a "$payload"/ "$destination_path"/
+    else
+      cp "$payload" "$destination_path"
+    fi
+  done
+  shopt -u nullglob
+}
+
+copy_companion_runtime "docling-tools"
+copy_companion_runtime "ocrmypdf"
 rm -rf "$DIST_DIR/docling-tools" "$DIST_DIR/ocrmypdf"
 
 PACKAGED_TORCHVISION_EXTENSIONS=()
