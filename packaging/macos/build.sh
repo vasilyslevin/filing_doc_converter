@@ -276,7 +276,14 @@ set_or_add_plist "LSMinimumSystemVersion" "string" "$MIN_MACOS_VERSION"
 /usr/libexec/PlistBuddy -c "Add :LSArchitecturePriority array" "$PLIST"
 /usr/libexec/PlistBuddy -c "Add :LSArchitecturePriority:0 string $ARCH" "$PLIST"
 
-codesign --force --deep --sign - "$APP_DIR"
+SIGN_TARGETS=()
+while IFS= read -r -d '' TARGET; do
+  SIGN_TARGETS+=("$TARGET")
+done < <(find "$APP_DIR/Contents" -type f \( -perm -111 -o -name "*.dylib" -o -name "*.so" \) -print0)
+for TARGET in "${SIGN_TARGETS[@]}"; do
+  codesign --force --sign - "$TARGET"
+done
+codesign --force --sign - "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 
 (

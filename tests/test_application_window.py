@@ -32,15 +32,15 @@ def missing_models() -> ModelDirectoryState:
     return ModelDirectoryState(Path("models"), "settings", False)
 
 
-def sample_installation(tmp_path: Path, *, source: str = "path") -> TesseractInstallation:
-    executable = tmp_path / source / "tesseract"
+def sample_installation(tmp_path: Path, *, source: str = "bundled") -> TesseractInstallation:
+    executable = tmp_path / source / ("tesseract.exe" if source == "bundled" else "tesseract")
     executable.parent.mkdir(parents=True, exist_ok=True)
     executable.touch()
     tessdata = executable.parent / "tessdata" / "configs"
     tessdata.mkdir(parents=True)
     (tessdata / "hocr").write_text("", encoding="utf-8")
     return TesseractInstallation(
-        label="System PATH",
+        label="Bundled Tesseract (recommended)" if source == "bundled" else "System PATH",
         source=source,
         executable=executable,
         tessdata=executable.parent / "tessdata",

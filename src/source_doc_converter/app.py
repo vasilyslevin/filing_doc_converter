@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from source_doc_converter.application_window import ApplicationWindow
 from source_doc_converter.model_management import (
+    INTERNAL_DOCLING_TOOLS_FLAG,
     is_packaged_application,
     resolve_model_downloader,
 )
@@ -23,7 +24,6 @@ from source_doc_converter.settings_migration import (
 )
 
 PACKAGE_SMOKE_TEST_FLAG = "--package-smoke-test"
-DOCLING_TOOLS_FLAG = "--docling-tools"
 
 
 def prepare_packaged_path() -> None:
@@ -42,7 +42,14 @@ def run_package_smoke_test() -> int:
 
     window = ApplicationWindow()
     window.close()
-    resolve_model_downloader()
+    downloader_command = resolve_model_downloader()
+    if is_packaged_application() and sys.platform == "darwin":
+        expected = [str(Path(sys.executable).resolve()), INTERNAL_DOCLING_TOOLS_FLAG]
+        if downloader_command != expected:
+            raise RuntimeError(
+                "Packaged macOS model downloader command is misconfigured; "
+                "expected internal docling-tools dispatch."
+            )
     _ = PdfReader
     return 0
 
@@ -61,8 +68,8 @@ def run_docling_tools_command(arguments: list[str]) -> int:
 def main() -> int:
     _prepare_frozen_multiprocessing()
     prepare_packaged_path()
-    if DOCLING_TOOLS_FLAG in sys.argv:
-        index = sys.argv.index(DOCLING_TOOLS_FLAG)
+    if INTERNAL_DOCLING_TOOLS_FLAG in sys.argv:
+        index = sys.argv.index(INTERNAL_DOCLING_TOOLS_FLAG)
         return run_docling_tools_command(sys.argv[index + 1 :])
     smoke_test = PACKAGE_SMOKE_TEST_FLAG in sys.argv
     arguments = [argument for argument in sys.argv if argument != PACKAGE_SMOKE_TEST_FLAG]
