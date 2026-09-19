@@ -8,10 +8,7 @@ def run_runtime_check() -> int:
 
     import torch
     import torchvision
-    from docling.document_converter import DocumentConverter
-    from pypdf import PdfReader
     from scipy import ndimage
-    from transformers import AutoImageProcessor
 
     array_api_module = None
     for module_name in (
@@ -35,8 +32,16 @@ def run_runtime_check() -> int:
     if not torchvision.extension._has_ops():
         raise RuntimeError(
             "Torchvision native operators are unavailable in this runtime; "
-            "packaged _C.pyd or dependent DLLs may be missing."
+            "packaged native extension or dependent libraries may be missing."
         )
+    boxes = torch.tensor([[0.0, 0.0, 1.0, 1.0], [0.1, 0.1, 1.1, 1.1]])
+    scores = torch.tensor([0.9, 0.8])
+    if torchvision.ops.nms(boxes, scores, 0.5).numel() == 0:
+        raise RuntimeError("Torchvision NMS runtime check returned no detections.")
+
+    from docling.document_converter import DocumentConverter
+    from pypdf import PdfReader
+    from transformers import AutoImageProcessor
 
     print(f"Torch: {torch.__version__}")
     print(f"Torchvision: {torchvision.__version__}")

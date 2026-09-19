@@ -20,11 +20,15 @@ def test_runtime_check_resolves_auto_image_processor(monkeypatch, capsys) -> Non
     transformers_module.AutoImageProcessor = FakeAutoImageProcessor
     torch_module = ModuleType("torch")
     torch_module.__version__ = "2.14.0"
+    torch_module.tensor = lambda values: values
     torchvision_module = ModuleType("torchvision")
     torchvision_module.__version__ = "0.29.0"
     extension_module = ModuleType("torchvision.extension")
     extension_module._has_ops = lambda: True
+    ops_module = ModuleType("torchvision.ops")
+    ops_module.nms = lambda boxes, scores, iou_threshold: type("NmsResult", (), {"numel": lambda self: 1})()
     torchvision_module.extension = extension_module
+    torchvision_module.ops = ops_module
     scipy_module = ModuleType("scipy")
     ndimage_module = ModuleType("scipy.ndimage")
     ndimage_module.gaussian_filter1d = lambda values, sigma: list(values)
@@ -40,6 +44,7 @@ def test_runtime_check_resolves_auto_image_processor(monkeypatch, capsys) -> Non
     monkeypatch.setitem(sys.modules, "torch", torch_module)
     monkeypatch.setitem(sys.modules, "torchvision", torchvision_module)
     monkeypatch.setitem(sys.modules, "torchvision.extension", extension_module)
+    monkeypatch.setitem(sys.modules, "torchvision.ops", ops_module)
     monkeypatch.setitem(sys.modules, "scipy", scipy_module)
     monkeypatch.setitem(sys.modules, "scipy.ndimage", ndimage_module)
     monkeypatch.setitem(sys.modules, "scipy._external", scipy_external_module)

@@ -13,6 +13,8 @@ def _candidate_runtime_roots() -> list[Path]:
         roots.append(Path(meipass))
     exe_dir = Path(sys.executable).resolve().parent
     roots.extend([exe_dir, exe_dir / "_internal"])
+    if sys.platform == "darwin":
+        roots.append(exe_dir.parent / "Frameworks")
 
     unique_roots: list[Path] = []
     seen = set()
@@ -43,12 +45,16 @@ def _load_torchvision_extension() -> None:
 
     runtime_roots = _candidate_runtime_roots()
     bundle_root = runtime_roots[0] if runtime_roots else None
+    extension_suffixes = ("_C*.pyd", "_C*.so")
     extension = None
     checked_directories: list[Path] = []
     for root in runtime_roots:
         candidate = root / "torchvision"
         checked_directories.append(candidate)
-        matches = sorted(candidate.glob("_C*.pyd"))
+        matches = []
+        for pattern in extension_suffixes:
+            matches.extend(candidate.glob(pattern))
+        matches = sorted(matches)
         if matches:
             extension = matches[0]
             break
@@ -66,7 +72,7 @@ def _load_torchvision_extension() -> None:
         if torch_lib.is_dir():
             dll_directories.append(torch_lib)
 
-    if hasattr(os, "add_dll_directory"):
+    if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
         for directory in dll_directories:
             _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(directory)))
 
