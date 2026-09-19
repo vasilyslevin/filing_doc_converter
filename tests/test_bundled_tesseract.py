@@ -128,8 +128,17 @@ def test_resolve_ocrmypdf_prefers_packaged_companion(monkeypatch, tmp_path: Path
     companion.touch()
     monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: True)
     monkeypatch.setattr(ocr_runtime.sys, "executable", str(package_directory / "app.exe"))
-    monkeypatch.setattr(ocr_runtime.shutil, "which", lambda name: str(tmp_path / "system" / "ocrmypdf"))
+    monkeypatch.setattr(ocr_runtime, "find_executable", lambda name, **kwargs: str(tmp_path / "system" / "ocrmypdf"))
 
     executable = ocr_runtime.resolve_ocrmypdf_executable()
 
     assert executable == str(companion)
+
+
+def test_resolve_ocrmypdf_uses_macos_finder_paths_when_path_missing(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: False)
+    monkeypatch.setattr(ocr_runtime, "find_executable", lambda name, **kwargs: str(tmp_path / "brew" / "ocrmypdf"))
+
+    executable = ocr_runtime.resolve_ocrmypdf_executable()
+
+    assert executable == str(tmp_path / "brew" / "ocrmypdf")

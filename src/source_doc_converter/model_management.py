@@ -7,12 +7,15 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings, QStandardPaths
 
+from source_doc_converter.runtime_paths import packaged_resources_directory
+
 MODEL_DIRECTORY_ENV = "SOURCE_DOC_CONVERTER_MODEL_DIR"
 LEGACY_MODEL_DIRECTORY_ENV = "FILING_DOC_CONVERTER_MODEL_DIR"
 MODEL_DIRECTORY_SETTING = "models/directory"
 MODEL_READY_MARKER = ".source-doc-converter-models-ready"
 LEGACY_MODEL_READY_MARKER = ".filing-doc-converter-models-ready"
 PACKAGED_DOWNLOADER_NAME = "docling-tools.exe"
+PACKAGED_DOWNLOADER_NAMES = ("docling-tools.exe", "docling-tools")
 EXPECTED_MODEL_DIRECTORIES = (
     "docling-project--docling-layout-heron",
     "docling-project--docling-layout-heron-onnx",
@@ -136,11 +139,18 @@ def is_packaged_application() -> bool:
 
 def resolve_model_downloader() -> str:
     if is_packaged_application():
-        companion = Path(sys.executable).resolve().with_name(PACKAGED_DOWNLOADER_NAME)
-        if companion.is_file():
-            return str(companion)
+        executable_directory = Path(sys.executable).resolve().parent
+        candidates = [executable_directory]
+        resources = packaged_resources_directory()
+        if resources is not None:
+            candidates.append(resources)
+        for directory in candidates:
+            for name in PACKAGED_DOWNLOADER_NAMES:
+                companion = directory / name
+                if companion.is_file():
+                    return str(companion)
         raise ModelManagementError(
-            "The packaged docling-tools.exe companion is missing. Reinstall or replace the "
+            "The packaged docling-tools companion is missing. Reinstall or replace the "
             "application folder before downloading models."
         )
 

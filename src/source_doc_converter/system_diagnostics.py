@@ -16,6 +16,7 @@ from source_doc_converter.ocr_runtime import (
     resolve_tesseract_executable,
     resolve_tesseract_profile,
 )
+from source_doc_converter.runtime_paths import find_executable, macos_finder_search_paths
 from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 
@@ -213,6 +214,36 @@ def check_tesseract() -> ComponentStatus:
     )
 
 
+def _ghostscript_executable_candidates() -> tuple[str, ...]:
+    if platform.system() == "Windows":
+        return ("gswin64c", "gswin32c", "gs")
+    return ("gs",)
+
+
+def check_ghostscript() -> ComponentStatus:
+    executable = None
+    for candidate in _ghostscript_executable_candidates():
+        resolved = find_executable(candidate, extra_directories=macos_finder_search_paths())
+        if resolved:
+            executable = resolved
+            break
+    if executable is None:
+        return ComponentStatus("ghostscript", "Ghostscript", False, error="Executable not found")
+
+    succeeded, output, error = _run_command([executable, "--version"])
+    details = ()
+    if platform.system() == "Darwin":
+        details = (f"Executable: {executable}",)
+    return ComponentStatus(
+        "ghostscript",
+        "Ghostscript",
+        succeeded,
+        version=_first_line(output),
+        details=details,
+        error=error,
+    )
+
+
 def check_python_package(distribution: str, label: str) -> ComponentStatus:
     try:
         spec = importlib_util.find_spec(distribution)
@@ -236,8 +267,14 @@ def installation_guidance(component: str, operating_system: str | None = None) -
     system = operating_system or platform.system()
     if component == "docling":
         return 'Install the Docling extra: python -m pip install ".[docling]"'
+    if component == "ghostscript":
+        if system == "Darwin":
+            return "Install Ghostscript with Homebrew: brew install ghostscript"
+        if system == "Windows":
+            return "Install Ghostscript and ensure gswin64c is available on PATH."
+        return "Install Ghostscript using your Linux distribution package manager."
     if system == "Darwin":
-        return "Install OCR tools with Homebrew: brew install ocrmypdf tesseract"
+        return "Install OCR tools with Homebrew: brew install ocrmypdf tesseract ghostscript"
     if system == "Windows":
         return (
             "If using the packaged app, reinstall it if bundled OCR tools are missing. "
@@ -254,5 +291,5 @@ def collect_system_diagnostics() -> SystemDiagnostics:
         architecture=platform.machine(),
         python_version=platform.python_version(),
         pyside_version=PYSIDE_VERSION,
-        components=(check_ocrmypdf(), check_tesseract(), check_docling()),
+        components=(check_ocrmypdf(), check_tesseract(), check_ghostscript(), check_docling()),
     )

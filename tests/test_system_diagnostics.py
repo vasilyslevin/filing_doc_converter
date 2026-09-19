@@ -6,6 +6,7 @@ from source_doc_converter.system_diagnostics import (
     ComponentStatus,
     SystemDiagnostics,
     check_docling,
+    check_ghostscript,
     check_ocrmypdf,
     check_tesseract,
 )
@@ -126,6 +127,7 @@ def test_diagnostic_report_contains_no_sensitive_paths() -> None:
         components=(
             ComponentStatus("ocrmypdf", "OCRmyPDF", True, "17.0.0"),
             ComponentStatus("tesseract", "Tesseract OCR", True, "5.5.0", ("Languages: eng",)),
+            ComponentStatus("ghostscript", "Ghostscript", True, "10.0.0"),
             ComponentStatus("docling", "Docling", False, error="Package not installed"),
         ),
     )
@@ -142,5 +144,15 @@ def test_diagnostic_report_contains_no_sensitive_paths() -> None:
 
 def test_platform_specific_guidance() -> None:
     assert "Homebrew" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin")
+    assert "ghostscript" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin").lower()
     assert "packaged app" in system_diagnostics.installation_guidance("tesseract", "Windows")
     assert "package manager" in system_diagnostics.installation_guidance("ocrmypdf", "Linux")
+
+
+def test_ghostscript_missing_executable(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics, "find_executable", lambda *args, **kwargs: None)
+
+    result = check_ghostscript()
+
+    assert not result.available
+    assert result.error == "Executable not found"

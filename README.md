@@ -65,12 +65,14 @@ OCRmyPDF also requires an OCR engine and supporting system components. For sourc
 
 ### macOS
 
-Homebrew provides OCRmyPDF and Tesseract:
+Homebrew provides OCRmyPDF, Tesseract, and Ghostscript:
 
 ```bash
-brew install ocrmypdf tesseract
+brew install ocrmypdf tesseract ghostscript
 python -m pip install -e ".[docling]"
 ```
+
+For native macOS package installation, architecture-specific downloads, checksum verification, Finder launch behavior, and signing/notarization notes, see [docs/macos.md](docs/macos.md).
 
 ### Windows
 

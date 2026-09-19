@@ -1,5 +1,5 @@
 import os
-import shutil
+import platform
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -8,6 +8,12 @@ from pathlib import Path
 from PySide6.QtCore import QSettings
 
 from source_doc_converter.model_management import is_packaged_application
+from source_doc_converter.runtime_paths import (
+    find_executable,
+    macos_finder_search_paths,
+    packaged_contents_directory,
+    packaged_resources_directory,
+)
 from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 TESSERACT_PROFILE_MODE_SETTING = "ocr/tesseract_profile_mode"
@@ -43,8 +49,15 @@ class TesseractRuntimeProfile:
 
 def _candidate_bundle_roots() -> tuple[Path, ...]:
     roots: list[Path] = []
-    executable_root = Path(sys.executable).resolve().parent / "tools" / "tesseract"
-    roots.append(executable_root)
+    executable_root = Path(sys.executable).resolve().parent
+    roots.append(executable_root / "tools" / "tesseract")
+    contents = packaged_contents_directory()
+    if contents is not None:
+        roots.append(contents / "Resources" / "tools" / "tesseract")
+        roots.append(contents / "Frameworks" / "tools" / "tesseract")
+    resources = packaged_resources_directory()
+    if resources is not None:
+        roots.append(resources / "tools" / "tesseract")
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass:
         roots.append(Path(meipass).resolve() / "tools" / "tesseract")
@@ -71,10 +84,18 @@ def find_bundled_tesseract() -> BundledTesseract | None:
 
 def resolve_ocrmypdf_executable() -> str | None:
     if is_packaged_application():
-        executable = Path(sys.executable).resolve().with_name("ocrmypdf.exe")
-        if executable.is_file():
-            return str(executable)
-    return shutil.which("ocrmypdf")
+        executable_root = Path(sys.executable).resolve().parent
+        for companion_name in ("ocrmypdf.exe", "ocrmypdf"):
+            companion = executable_root / companion_name
+            if companion.is_file():
+                return str(companion)
+        resources = packaged_resources_directory()
+        if resources is not None:
+            for companion_name in ("ocrmypdf.exe", "ocrmypdf"):
+                companion = resources / companion_name
+                if companion.is_file():
+                    return str(companion)
+    return find_executable("ocrmypdf", extra_directories=macos_finder_search_paths())
 
 
 def _windows_documented_paths() -> tuple[Path, ...]:
@@ -90,9 +111,12 @@ def _windows_documented_paths() -> tuple[Path, ...]:
 
 def _candidate_system_executables() -> tuple[tuple[str, Path], ...]:
     candidates: list[tuple[str, Path]] = []
-    path_exec = shutil.which("tesseract")
+    path_exec = find_executable("tesseract", extra_directories=macos_finder_search_paths())
     if path_exec:
         candidates.append(("path", Path(path_exec)))
+    if platform.system() == "Darwin":
+        for prefix in macos_finder_search_paths():
+            candidates.append(("homebrew", prefix / "tesseract"))
     if os.name == "nt":
         for path in _windows_documented_paths():
             candidates.append(("known-location", path))
@@ -167,7 +191,11 @@ def discover_tesseract_installations() -> tuple[TesseractInstallation, ...]:
         label = (
             f"System PATH ({executable})"
             if source == "path"
-            else f"Windows installation ({executable})"
+            else (
+                f"Homebrew installation ({executable})"
+                if source == "homebrew"
+                else f"Windows installation ({executable})"
+            )
         )
         installations.append(
             TesseractInstallation(

@@ -114,3 +114,11 @@ def test_dependency_setup_failure_preserves_full_details(monkeypatch, qtbot) -> 
     assert failures
     assert "line one" in failures[0]
     assert "line two" in failures[0]
+
+
+def test_default_steps_do_not_install_on_macos(monkeypatch) -> None:
+    monkeypatch.setattr(dependency_setup, "system", lambda: "Darwin")
+
+    steps = dependency_setup._default_steps(diagnostics(("ocrmypdf", "tesseract", "ghostscript")))
+
+    assert steps == []

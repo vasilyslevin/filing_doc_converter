@@ -446,7 +446,7 @@ class SystemCheckDialog(QDialog):
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save system report",
-            "filing-document-converter-system-check.txt",
+            "source-document-converter-system-check.txt",
             "Text files (*.txt)",
         )
         if path:

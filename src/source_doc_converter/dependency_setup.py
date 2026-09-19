@@ -1,6 +1,7 @@
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from platform import system
 from threading import Event
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -133,6 +134,8 @@ class DependencySetupWorker(QObject):
 
 
 def _default_steps(diagnostics: SystemDiagnostics) -> list[DependencyInstallStep]:
+    if system() != "Windows":
+        return []
     missing: dict[str, ComponentStatus] = {
         component.key: component
         for component in diagnostics.components
@@ -153,6 +156,14 @@ def _default_steps(diagnostics: SystemDiagnostics) -> list[DependencyInstallStep
                 "ocrmypdf",
                 "OCRmyPDF",
                 ("winget", "install", "-e", "--id", "OCRmyPDF.OCRmyPDF"),
+            )
+        )
+    if "ghostscript" in missing:
+        steps.append(
+            DependencyInstallStep(
+                "ghostscript",
+                "Ghostscript",
+                ("winget", "install", "-e", "--id", "ArtifexSoftware.GhostScript"),
             )
         )
     return steps
