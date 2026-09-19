@@ -32,15 +32,15 @@ def missing_models() -> ModelDirectoryState:
     return ModelDirectoryState(Path("models"), "settings", False)
 
 
-def sample_installation(tmp_path: Path, *, source: str = "bundled") -> TesseractInstallation:
-    executable = tmp_path / source / ("tesseract.exe" if source == "bundled" else "tesseract")
+def sample_installation(tmp_path: Path, *, source: str = "path") -> TesseractInstallation:
+    executable = tmp_path / source / "tesseract"
     executable.parent.mkdir(parents=True, exist_ok=True)
     executable.touch()
     tessdata = executable.parent / "tessdata" / "configs"
     tessdata.mkdir(parents=True)
     (tessdata / "hocr").write_text("", encoding="utf-8")
     return TesseractInstallation(
-        label="Bundled Tesseract (recommended)" if source == "bundled" else "System PATH",
+        label="System PATH",
         source=source,
         executable=executable,
         tessdata=executable.parent / "tessdata",
@@ -88,6 +88,7 @@ def test_diagnostics_update_output_availability(qtbot) -> None:
         components=(
             ComponentStatus("ocrmypdf", "OCRmyPDF", True),
             ComponentStatus("tesseract", "Tesseract OCR", True),
+            ComponentStatus("ghostscript", "Ghostscript", True),
             ComponentStatus("docling", "Docling", True),
         ),
     )
@@ -115,6 +116,7 @@ def test_missing_models_disable_only_docling_outputs(qtbot) -> None:
         components=(
             ComponentStatus("ocrmypdf", "OCRmyPDF", True),
             ComponentStatus("tesseract", "Tesseract OCR", True),
+            ComponentStatus("ghostscript", "Ghostscript", True),
             ComponentStatus("docling", "Docling", True),
         ),
     )
@@ -125,6 +127,50 @@ def test_missing_models_disable_only_docling_outputs(qtbot) -> None:
     assert not window.markdown_checkbox.isEnabled()
     assert not window.json_checkbox.isEnabled()
     assert "models are not ready" in window.markdown_checkbox.toolTip()
+
+
+def test_missing_ghostscript_disables_searchable_pdf(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        model_state_provider=ready_models,
+    )
+    qtbot.addWidget(window)
+    diagnostics = SystemDiagnostics(
+        application_version="0.1.0a0",
+        operating_system="TestOS",
+        operating_system_version="1",
+        architecture="test",
+        python_version="3.12",
+        pyside_version="6.9",
+        components=(
+            ComponentStatus("ocrmypdf", "OCRmyPDF", True),
+            ComponentStatus("tesseract", "Tesseract OCR", True),
+            ComponentStatus("ghostscript", "Ghostscript", False),
+            ComponentStatus("docling", "Docling", True),
+        ),
+    )
+
+    window.apply_diagnostics(diagnostics)
+
+    assert not window.searchable_pdf_checkbox.isEnabled()
+    assert "Ghostscript" in window.searchable_pdf_checkbox.toolTip()
+
+
+def test_missing_pypdf_disables_fast_markdown_option(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        application_window,
+        "check_pypdf",
+        lambda: ComponentStatus("pypdf", "pypdf", False, error="Package not installed"),
+    )
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+    )
+    qtbot.addWidget(window)
+
+    fast_index = window.ai_analysis_mode_combo.findData("fast")
+    fast_item = window.ai_analysis_mode_combo.model().item(fast_index)
+    assert fast_item is not None
+    assert not fast_item.isEnabled()
 
 
 def test_open_output_folder_uses_desktop_services(monkeypatch, qtbot, tmp_path: Path) -> None:

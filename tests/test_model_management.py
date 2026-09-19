@@ -176,8 +176,23 @@ def test_packaged_run_fails_closed_without_companion(monkeypatch, tmp_path: Path
         lambda executable: pytest.fail("PATH must not be used for a packaged application"),
     )
 
-    with pytest.raises(ModelManagementError, match="packaged docling-tools.exe companion"):
+    with pytest.raises(ModelManagementError, match="packaged docling-tools companion"):
         resolve_model_downloader()
+
+
+def test_packaged_run_accepts_macos_companion_without_exe(monkeypatch, tmp_path: Path) -> None:
+    application = tmp_path / "SourceDocumentConverter"
+    companion = tmp_path / "docling-tools"
+    companion.write_bytes(b"packaged tool")
+    monkeypatch.setattr(model_management, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(model_management.sys, "executable", str(application))
+    monkeypatch.setattr(
+        model_management.shutil,
+        "which",
+        lambda executable: pytest.fail("PATH must not be used for a packaged application"),
+    )
+
+    assert resolve_model_downloader() == str(companion.resolve())
 
 
 def test_missing_downloader_is_reported(monkeypatch, tmp_path: Path) -> None:

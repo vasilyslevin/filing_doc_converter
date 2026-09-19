@@ -2,14 +2,13 @@ name: Windows development package
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - ".github/workflows/windows-package.yml"
-      - "packaging/windows/**"
-      - "src/source_doc_converter/**"
-      - "pyproject.toml"
-      - "LICENSE"
-      - "THIRD_PARTY_NOTICES.md"
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   package:
@@ -24,25 +23,6 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Read Tesseract lock metadata
-        shell: pwsh
-        run: |
-          $Lock = Get-Content "packaging/windows/tesseract-bundle.lock.json" -Raw | ConvertFrom-Json
-          $InstallerName = [System.IO.Path]::GetFileName("$($Lock.download_url)")
-          "TESSERACT_LOCK_VERSION=$($Lock.version)" | Out-File $env:GITHUB_ENV -Append
-          "TESSERACT_LOCK_SHA256=$($Lock.sha256.ToLowerInvariant())" | Out-File $env:GITHUB_ENV -Append
-          "TESSERACT_INSTALLER_NAME=$InstallerName" | Out-File $env:GITHUB_ENV -Append
-
-      - name: Create Tesseract cache directory
-        shell: pwsh
-        run: New-Item -ItemType Directory -Path "build/windows/tesseract/download" -Force | Out-Null
-
-      - name: Cache pinned Tesseract installer
-        uses: actions/cache@v4
-        with:
-          path: build/windows/tesseract/download/${{ env.TESSERACT_INSTALLER_NAME }}
-          key: windows-tesseract-installer-${{ runner.os }}-${{ env.TESSERACT_LOCK_VERSION }}-${{ env.TESSERACT_LOCK_SHA256 }}
-
       - name: Install application and build dependencies
         shell: pwsh
         run: |
@@ -56,123 +36,20 @@ jobs:
       - name: Test
         run: pytest
 
-      - name: Build standalone folder (Full)
+      - name: Build standalone folder
         shell: pwsh
         run: ./packaging/windows/build.ps1
 
-      - name: Locate Full distribution
+      - name: Locate distribution
         shell: pwsh
         run: |
           $Distribution = Join-Path $PWD "build\windows\dist\SourceDocumentConverter"
           if (-not (Test-Path $Distribution -PathType Container)) {
             throw "PyInstaller distribution directory was not produced."
           }
-          "DIST_DIR_FULL=$Distribution" | Out-File $env:GITHUB_ENV -Append
+          "DIST_DIR=$Distribution" | Out-File $env:GITHUB_ENV -Append
 
-      - name: Verify Full package contents
-        shell: pwsh
-        run: |
-          $RequiredFiles = @(
-            "SourceDocumentConverter.exe",
-            "docling-tools.exe",
-            "ocrmypdf.exe",
-            "LICENSE",
-            "THIRD_PARTY_NOTICES.md",
-            "PACKAGING_NOTES.txt",
-            "SHA256SUMS.txt",
-            "tools\\tesseract\\tesseract.exe",
-            "tools\\tesseract\\tessdata\\eng.traineddata",
-            "tools\\tesseract\\tessdata\\osd.traineddata",
-            "tools\\tesseract\\BUNDLE_INFO.txt"
-          )
-          foreach ($Name in $RequiredFiles) {
-            $Path = Join-Path $env:DIST_DIR_FULL $Name
-            if (-not (Test-Path $Path -PathType Leaf)) {
-              throw "Missing package file: $Name"
-            }
-          }
-
-      - name: Smoke test packaged executables
-        shell: pwsh
-        env:
-          QT_QPA_PLATFORM: offscreen
-          HF_HUB_OFFLINE: "1"
-          TRANSFORMERS_OFFLINE: "1"
-          DO_NOT_TRACK: "1"
-        run: |
-          $GuiPath = Join-Path $env:DIST_DIR_FULL "SourceDocumentConverter.exe"
-          $GuiProcess = Start-Process -FilePath $GuiPath -ArgumentList "--package-smoke-test" -Wait -PassThru
-          if ($GuiProcess.ExitCode -ne 0) {
-            throw "GUI package smoke test failed with exit code $($GuiProcess.ExitCode)."
-          }
-          & (Join-Path $env:DIST_DIR_FULL "docling-tools.exe") --help
-          if ($LASTEXITCODE -ne 0) {
-            throw "Docling tools help failed with exit code $LASTEXITCODE."
-          }
-          & (Join-Path $env:DIST_DIR_FULL "docling-tools.exe") models download --help
-          if ($LASTEXITCODE -ne 0) {
-            throw "Docling model-download help failed with exit code $LASTEXITCODE."
-          }
-          & (Join-Path $env:DIST_DIR_FULL "ocrmypdf.exe") --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "OCRmyPDF companion failed with exit code $LASTEXITCODE."
-          }
-          $BundledTesseract = Join-Path $env:DIST_DIR_FULL "tools\\tesseract\\tesseract.exe"
-          if (-not (Test-Path $BundledTesseract -PathType Leaf)) {
-            throw "Bundled Tesseract executable is missing."
-          }
-          $env:TESSDATA_PREFIX = Join-Path $env:DIST_DIR_FULL "tools\\tesseract\\tessdata"
-          & $BundledTesseract --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "Bundled Tesseract version check failed with exit code $LASTEXITCODE."
-          }
-          $Languages = & $BundledTesseract --list-langs 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            throw "Bundled Tesseract language listing failed with exit code $LASTEXITCODE."
-          }
-          if ($Languages -notcontains "eng" -or $Languages -notcontains "osd") {
-            throw "Bundled Tesseract missing required language data (eng, osd)."
-          }
-          $HocrConfig = Join-Path $env:TESSDATA_PREFIX "configs\\hocr"
-          if (-not (Test-Path $HocrConfig -PathType Leaf)) {
-            throw "Bundled Tesseract missing required config: tessdata/configs/hocr."
-          }
-          $SmokeInput = Join-Path $env:RUNNER_TEMP "tesseract-smoke.pgm"
-          @(
-            "P2",
-            "3 3",
-            "255",
-            "255 255 255",
-            "255 0 255",
-            "255 255 255"
-          ) | Set-Content -Path $SmokeInput -Encoding ascii
-          $SmokeOutBase = Join-Path $env:RUNNER_TEMP "tesseract-smoke-out"
-          & $BundledTesseract $SmokeInput $SmokeOutBase -l eng hocr
-          if ($LASTEXITCODE -ne 0) {
-            throw "Bundled Tesseract hOCR smoke test failed with exit code $LASTEXITCODE."
-          }
-          $HocrOutput = "$SmokeOutBase.hocr"
-          if (-not (Test-Path $HocrOutput -PathType Leaf)) {
-            throw "Bundled Tesseract hOCR smoke test did not produce output."
-          }
-          if ((Get-Content $HocrOutput -Raw).Trim().Length -eq 0) {
-            throw "Bundled Tesseract hOCR smoke output is empty."
-          }
-
-      - name: Build standalone folder (Lite)
-        shell: pwsh
-        run: ./packaging/windows/build.ps1 -PackageFlavor Lite -OutputDirectory build/windows-lite
-
-      - name: Locate Lite distribution
-        shell: pwsh
-        run: |
-          $Distribution = Join-Path $PWD "build\windows-lite\dist\SourceDocumentConverter"
-          if (-not (Test-Path $Distribution -PathType Container)) {
-            throw "Lite PyInstaller distribution directory was not produced."
-          }
-          "DIST_DIR_LITE=$Distribution" | Out-File $env:GITHUB_ENV -Append
-
-      - name: Verify Lite package contents
+      - name: Verify package contents
         shell: pwsh
         run: |
           $RequiredFiles = @(
@@ -184,40 +61,55 @@ jobs:
             "SHA256SUMS.txt"
           )
           foreach ($Name in $RequiredFiles) {
-            $Path = Join-Path $env:DIST_DIR_LITE $Name
+            $Path = Join-Path $env:DIST_DIR $Name
             if (-not (Test-Path $Path -PathType Leaf)) {
-              throw "Missing Lite package file: $Name"
+              throw "Missing package file: $Name"
             }
           }
-          if (Test-Path (Join-Path $env:DIST_DIR_LITE "ocrmypdf.exe") -PathType Leaf) {
-            throw "Lite package unexpectedly contains ocrmypdf.exe."
+          if (Test-Path (Join-Path $env:DIST_DIR "ocrmypdf.exe") -PathType Leaf) {
+            throw "Package unexpectedly contains ocrmypdf.exe."
           }
-          if (Test-Path (Join-Path $env:DIST_DIR_LITE "tools\\tesseract\\tesseract.exe") -PathType Leaf) {
-            throw "Lite package unexpectedly contains bundled Tesseract."
+          if (Test-Path (Join-Path $env:DIST_DIR "tools\tesseract\tesseract.exe") -PathType Leaf) {
+            throw "Package unexpectedly contains bundled Tesseract."
           }
 
-      - name: Create ZIP artifacts
+      - name: Smoke test packaged executables
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+          DO_NOT_TRACK: "1"
+        run: |
+          $GuiPath = Join-Path $env:DIST_DIR "SourceDocumentConverter.exe"
+          $GuiProcess = Start-Process -FilePath $GuiPath -ArgumentList "--package-smoke-test" -Wait -PassThru
+          if ($GuiProcess.ExitCode -ne 0) {
+            throw "GUI package smoke test failed with exit code $($GuiProcess.ExitCode)."
+          }
+          & (Join-Path $env:DIST_DIR "docling-tools.exe") --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Docling tools help failed with exit code $LASTEXITCODE."
+          }
+          & (Join-Path $env:DIST_DIR "docling-tools.exe") --runtime-check
+          if ($LASTEXITCODE -ne 0) {
+            throw "Docling runtime check failed with exit code $LASTEXITCODE."
+          }
+          & (Join-Path $env:DIST_DIR "docling-tools.exe") models download --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Docling model-download help failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Create ZIP artifact
         shell: pwsh
         run: |
-          $ZipPathFull = Join-Path $PWD "SourceDocumentConverter-Windows-x64-Full.zip"
-          Compress-Archive -Path $env:DIST_DIR_FULL -DestinationPath $ZipPathFull -CompressionLevel Optimal
-          "PACKAGE_ZIP_FULL=$ZipPathFull" | Out-File $env:GITHUB_ENV -Append
-          $ZipPathLite = Join-Path $PWD "SourceDocumentConverter-Windows-x64-Lite.zip"
-          Compress-Archive -Path $env:DIST_DIR_LITE -DestinationPath $ZipPathLite -CompressionLevel Optimal
-          "PACKAGE_ZIP_LITE=$ZipPathLite" | Out-File $env:GITHUB_ENV -Append
+          $ZipPath = Join-Path $PWD "SourceDocumentConverter-Windows-x64.zip"
+          Compress-Archive -Path $env:DIST_DIR -DestinationPath $ZipPath -CompressionLevel Optimal
+          "PACKAGE_ZIP=$ZipPath" | Out-File $env:GITHUB_ENV -Append
 
-      - name: Upload unsigned development package (Full)
+      - name: Upload unsigned development package
         uses: actions/upload-artifact@v4
         with:
-          name: SourceDocumentConverter-Windows-x64-Full
-          path: ${{ env.PACKAGE_ZIP_FULL }}
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload unsigned development package (Lite)
-        uses: actions/upload-artifact@v4
-        with:
-          name: SourceDocumentConverter-Windows-x64-Lite
-          path: ${{ env.PACKAGE_ZIP_LITE }}
+          name: SourceDocumentConverter-Windows-x64
+          path: ${{ env.PACKAGE_ZIP }}
           if-no-files-found: error
           retention-days: 14
