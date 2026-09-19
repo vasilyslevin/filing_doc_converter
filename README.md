@@ -193,6 +193,13 @@ The model path is visible in the interactive dialog so the user can verify it. S
 
 In the main window, OCR languages are selected from the active Tesseract installation. Selected languages are persisted and passed to OCRmyPDF as `eng+spa` style values. If any selected language is unavailable in the active runtime, processing is blocked with guidance before document processing begins.
 
+OCR mode is also persisted per user:
+
+- **Smart legal document (recommended)** starts with skip-text and automatically retries with redo when per-page validation finds mixed/header-only text.
+- **Skip existing text** is fastest but can miss scanned bodies under digital headers.
+- **Redo OCR** is intended for mixed pages or unreliable old OCR.
+- **Force OCR** rasterizes everything and is the last-resort repair mode.
+
 ## Offline smoke test
 
 After model setup:

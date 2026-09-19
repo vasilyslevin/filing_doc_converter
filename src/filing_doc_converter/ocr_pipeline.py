@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +56,8 @@ class OcrResult:
     command: tuple[str, ...]
     stdout: str
     stderr: str
+    effective_mode: str = "skip"
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -64,8 +67,67 @@ class DoclingResult:
     json_path: Path | None
 
 
+@dataclass(frozen=True)
+class OcrCommandPlan:
+    requested_mode: str
+    effective_mode: str
+    command: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class OcrPageAnalysis:
+    page_number: int
+    text: str
+    has_raster_content: bool
+
+
+@dataclass(frozen=True)
+class OcrValidationReport:
+    meaningful_pages: tuple[int, ...]
+    weak_pages: tuple[int, ...]
+    blank_pages: tuple[int, ...]
+    warnings: tuple[str, ...]
+
+
 def find_ocrmypdf() -> str | None:
     return resolve_ocrmypdf_executable()
+
+
+def normalize_ocr_mode(value: str) -> str:
+    mode = value.strip().lower().replace("_", "-")
+    aliases = {
+        "smart": "smart",
+        "smart legal document (recommended)": "smart",
+        "skip": "skip",
+        "skip existing text": "skip",
+        "redo": "redo",
+        "redo ocr": "redo",
+        "redo-ocr": "redo",
+        "force": "force",
+        "force ocr": "force",
+        "force-ocr": "force",
+    }
+    return aliases.get(mode, "smart")
+
+
+def ocr_mode_label(mode: str) -> str:
+    labels = {
+        "smart": "Smart legal document (recommended)",
+        "skip": "Skip existing text",
+        "redo": "Redo OCR",
+        "force": "Force OCR",
+    }
+    return labels.get(normalize_ocr_mode(mode), labels["smart"])
+
+
+def ocr_mode_warning(mode: str) -> str:
+    warnings = {
+        "skip": "Skip is fastest but can miss scanned bodies under digital headers.",
+        "redo": "Redo is intended for mixed pages or unreliable old OCR.",
+        "force": "Force rasterizes everything and is the last-resort repair mode.",
+    }
+    return warnings.get(normalize_ocr_mode(mode), "")
 
 
 def searchable_output_path(input_path: Path, output_directory: Path) -> Path:
@@ -80,26 +142,209 @@ def json_output_path(input_path: Path, output_directory: Path) -> Path:
     return output_directory / f"{input_path.stem}.json"
 
 
+def plan_ocr_command(
+    input_path: Path,
+    output_path: Path,
+    *,
+    executable: str = "ocrmypdf",
+    language: str = "eng",
+    mode: str = "skip",
+    rotate_pages: bool = True,
+    deskew: bool = True,
+) -> OcrCommandPlan:
+    requested_mode = normalize_ocr_mode(mode)
+    effective_mode = "skip" if requested_mode == "smart" else requested_mode
+    warnings: list[str] = []
+    command = [
+        executable,
+        "--output-type",
+        "pdf",
+    ]
+    if effective_mode == "skip":
+        command.append("--skip-text")
+    elif effective_mode == "redo":
+        command.append("--redo-ocr")
+    elif effective_mode == "force":
+        command.append("--force-ocr")
+
+    if effective_mode == "redo":
+        if rotate_pages:
+            warnings.append("Redo OCR is incompatible with --rotate-pages; rotation is disabled.")
+        if deskew:
+            warnings.append("Redo OCR is incompatible with --deskew; deskew is disabled.")
+    else:
+        if rotate_pages:
+            command.append("--rotate-pages")
+        if deskew:
+            command.append("--deskew")
+
+    command.extend([
+        "--language",
+        language,
+        str(input_path),
+        str(output_path),
+    ])
+    return OcrCommandPlan(
+        requested_mode=requested_mode,
+        effective_mode=effective_mode,
+        command=tuple(command),
+        warnings=tuple(warnings),
+    )
+
+
 def build_ocr_command(
     input_path: Path,
     output_path: Path,
     *,
     executable: str = "ocrmypdf",
     language: str = "eng",
+    mode: str = "skip",
 ) -> list[str]:
-    return [
-        executable,
-        "--output-type",
-        "pdf",
-        "--mode",
-        "skip",
-        "--rotate-pages",
-        "--deskew",
-        "--language",
-        language,
-        str(input_path),
-        str(output_path),
-    ]
+    return list(
+        plan_ocr_command(
+            input_path,
+            output_path,
+            executable=executable,
+            language=language,
+            mode=mode,
+        ).command
+    )
+
+
+def _header_line(text: str) -> bool:
+    normalized = " ".join(text.lower().split())
+    return (
+        "case" in normalized
+        and "doc" in normalized
+        and "filed" in normalized
+        and "page" in normalized
+        and " of " in normalized
+    )
+
+
+def _meaningful_body_text(page_text: str) -> bool:
+    lines = [line.strip() for line in page_text.splitlines() if line.strip()]
+    body_lines = [line for index, line in enumerate(lines) if not (index < 3 and _header_line(line))]
+    body = " ".join(body_lines)
+    tokens = re.findall(r"[A-Za-z0-9]{3,}", body)
+    return len(tokens) >= 8
+
+
+def _analyze_pdf_pages(pdf_path: Path) -> tuple[OcrPageAnalysis, ...]:
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return ()
+
+    reader = PdfReader(str(pdf_path))
+    pages: list[OcrPageAnalysis] = []
+    for index, page in enumerate(reader.pages, start=1):
+        text = page.extract_text() or ""
+        has_raster = False
+        try:
+            resources = page.get("/Resources")
+            if resources:
+                xobject = resources.get("/XObject")
+                if xobject:
+                    for candidate in xobject.values():
+                        obj = candidate.get_object()
+                        if str(obj.get("/Subtype")) == "/Image":
+                            has_raster = True
+                            break
+        except (AttributeError, KeyError, TypeError, ValueError):
+            has_raster = False
+        pages.append(
+            OcrPageAnalysis(
+                page_number=index,
+                text=text,
+                has_raster_content=has_raster,
+            )
+        )
+    return tuple(pages)
+
+
+def _validate_pdf_text(pdf_path: Path) -> OcrValidationReport | None:
+    analyses = _analyze_pdf_pages(pdf_path)
+    if not analyses:
+        return None
+
+    meaningful: list[int] = []
+    weak: list[int] = []
+    blank: list[int] = []
+
+    for page in analyses:
+        stripped = page.text.strip()
+        if not stripped and not page.has_raster_content:
+            blank.append(page.page_number)
+            continue
+        if _meaningful_body_text(page.text):
+            meaningful.append(page.page_number)
+            continue
+        header_only = any(_header_line(line.strip()) for line in page.text.splitlines() if line.strip())
+        if page.has_raster_content or header_only:
+            weak.append(page.page_number)
+
+    warnings: list[str] = []
+    if weak:
+        page_list = ", ".join(str(page) for page in weak)
+        warnings.append(
+            f"Post-OCR validation: pages {page_list} still appear to lack meaningful body text."
+        )
+    return OcrValidationReport(
+        meaningful_pages=tuple(meaningful),
+        weak_pages=tuple(weak),
+        blank_pages=tuple(blank),
+        warnings=tuple(warnings),
+    )
+
+
+def _execute_ocr_command(
+    command: tuple[str, ...],
+    source: Path,
+    destination: Path,
+    *,
+    profile: TesseractRuntimeProfile | None,
+    cancel_event: Event | None,
+) -> tuple[str, str]:
+    process = subprocess.Popen(
+        list(command),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=build_ocr_environment(profile),
+        **background_subprocess_kwargs(),
+    )
+
+    while True:
+        try:
+            stdout, stderr = process.communicate(timeout=0.2)
+            break
+        except subprocess.TimeoutExpired:
+            if cancel_event is not None and cancel_event.is_set():
+                process.terminate()
+                try:
+                    process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate()
+                destination.unlink(missing_ok=True)
+                raise OcrCancelledError(f"OCR cancelled: {source.name}") from None
+
+    if process.returncode != 0:
+        destination.unlink(missing_ok=True)
+        stderr_text = (stderr or "").strip()
+        stdout_text = (stdout or "").strip()
+        detail = stderr_text or stdout_text or "Unknown OCRmyPDF error"
+        if stderr_text and stdout_text and stderr_text != stdout_text:
+            detail = f"{stderr_text}\n\n{stdout_text}"
+        raise OcrError(
+            f"OCRmyPDF failed for {source.name} (exit code {process.returncode}): {detail}"
+        )
+    if not destination.is_file():
+        raise OcrError(f"OCRmyPDF completed without creating: {destination}")
+    return stdout, stderr
 
 
 def _write_text_atomic(destination: Path, content: str) -> None:
@@ -234,6 +479,7 @@ def run_ocr(
     executable: str | None = None,
     tesseract_profile: TesseractRuntimeProfile | None = None,
     cancel_event: Event | None = None,
+    mode: str = "smart",
 ) -> OcrResult:
     source = input_path.resolve()
     if not source.is_file():
@@ -253,56 +499,76 @@ def run_ocr(
     if destination.exists():
         raise OcrError(f"Output already exists and will not be overwritten: {destination}")
 
-    command = build_ocr_command(
+    requested_mode = normalize_ocr_mode(mode)
+    profile = tesseract_profile or resolve_tesseract_profile()
+    plan = plan_ocr_command(
         source,
         destination,
         executable=resolved_executable,
         language=language,
+        mode=requested_mode,
     )
-    profile = tesseract_profile or resolve_tesseract_profile()
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=build_ocr_environment(profile),
-        **background_subprocess_kwargs(),
+    warnings: list[str] = list(plan.warnings)
+    mode_tip = ocr_mode_warning(plan.effective_mode)
+    if mode_tip:
+        warnings.append(mode_tip)
+
+    stdout, stderr = _execute_ocr_command(
+        plan.command,
+        source,
+        destination,
+        profile=profile,
+        cancel_event=cancel_event,
     )
-
-    while True:
-        try:
-            stdout, stderr = process.communicate(timeout=0.2)
-            break
-        except subprocess.TimeoutExpired:
-            if cancel_event is not None and cancel_event.is_set():
-                process.terminate()
-                try:
-                    process.communicate(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.communicate()
-                destination.unlink(missing_ok=True)
-                raise OcrCancelledError(f"OCR cancelled: {source.name}") from None
-
-    if process.returncode != 0:
-        destination.unlink(missing_ok=True)
-        stderr_text = (stderr or "").strip()
-        stdout_text = (stdout or "").strip()
-        detail = stderr_text or stdout_text or "Unknown OCRmyPDF error"
-        if stderr_text and stdout_text and stderr_text != stdout_text:
-            detail = f"{stderr_text}\n\n{stdout_text}"
-        raise OcrError(
-            f"OCRmyPDF failed for {source.name} (exit code {process.returncode}): {detail}"
+    effective_mode = plan.effective_mode
+    report = _validate_pdf_text(destination)
+    if requested_mode == "smart" and report is not None and report.weak_pages:
+        weak_pages = ", ".join(str(page) for page in report.weak_pages)
+        warnings.append(
+            "Smart mode detected mixed/header-only text on pages "
+            + weak_pages
+            + "; retrying with Redo OCR."
         )
-    if not destination.is_file():
-        raise OcrError(f"OCRmyPDF completed without creating: {destination}")
+        destination.unlink(missing_ok=True)
+        redo_plan = plan_ocr_command(
+            source,
+            destination,
+            executable=resolved_executable,
+            language=language,
+            mode="redo",
+        )
+        warnings.extend(redo_plan.warnings)
+        redo_stdout, redo_stderr = _execute_ocr_command(
+            redo_plan.command,
+            source,
+            destination,
+            profile=profile,
+            cancel_event=cancel_event,
+        )
+        stdout = f"{stdout}\n\n{redo_stdout}".strip()
+        stderr = f"{stderr}\n\n{redo_stderr}".strip()
+        plan = redo_plan
+        effective_mode = "redo"
+        report = _validate_pdf_text(destination)
+
+    if report is not None:
+        warnings.extend(report.warnings)
+        if report.weak_pages:
+            recommended = "Force OCR" if effective_mode == "redo" else "Redo OCR or Force OCR"
+            warnings.append(
+                f"Consider retrying with {recommended} for pages lacking meaningful body text."
+            )
+    elif requested_mode == "smart":
+        warnings.append(
+            "Smart OCR validation could not run (install pypdf for per-page validation support)."
+        )
 
     return OcrResult(
         input_path=source,
         output_path=destination,
-        command=tuple(command),
+        command=tuple(plan.command),
         stdout=stdout,
         stderr=stderr,
+        effective_mode=effective_mode,
+        warnings=tuple(dict.fromkeys(item for item in warnings if item.strip())),
     )

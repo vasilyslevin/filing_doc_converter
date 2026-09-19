@@ -31,6 +31,7 @@ class ProcessingWorker(QObject):
         language: str = "eng",
         executable: str | None = None,
         tesseract_profile: TesseractRuntimeProfile | None = None,
+        ocr_mode: str = "smart",
     ) -> None:
         super().__init__()
         self._input_paths = input_paths
@@ -41,6 +42,7 @@ class ProcessingWorker(QObject):
         self._language = language
         self._executable = executable
         self._tesseract_profile = tesseract_profile
+        self._ocr_mode = ocr_mode
         self._cancel_event = Event()
 
     @Slot()
@@ -68,9 +70,15 @@ class ProcessingWorker(QObject):
                         executable=self._executable,
                         tesseract_profile=self._tesseract_profile,
                         cancel_event=self._cancel_event,
+                        mode=self._ocr_mode,
+                    )
+                    self.stage_changed.emit(
+                        f"OCR mode: {ocr_result.effective_mode.title()} OCR"
                     )
                     docling_input = ocr_result.output_path
                     success_paths.append(str(ocr_result.output_path))
+                    for warning in ocr_result.warnings:
+                        success_paths.append(f"Warning: {warning}")
 
                 if self._create_markdown or self._create_json:
                     self.stage_changed.emit("Loading models and analyzing pages")

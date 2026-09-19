@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -51,6 +52,7 @@ from filing_doc_converter.system_diagnostics import (
 DOCLING_OCR_SETTING = "processing/docling_ocr"
 DOCLING_TABLES_SETTING = "processing/docling_tables"
 DOCLING_CPU_ONLY_SETTING = "processing/docling_cpu_only"
+OCR_MODE_SETTING = "processing/ocr_mode"
 
 
 def format_elapsed(milliseconds: int) -> str:
@@ -138,6 +140,29 @@ class ApplicationWindow(MainWindow):
         options_row.addWidget(self.table_structure_checkbox)
         options_row.addWidget(self.cpu_only_checkbox)
         options_row.addStretch()
+
+        self.ocr_mode_combo = QComboBox()
+        self.ocr_mode_combo.addItem("Smart legal document (recommended)", "smart")
+        self.ocr_mode_combo.addItem("Skip existing text", "skip")
+        self.ocr_mode_combo.addItem("Redo OCR", "redo")
+        self.ocr_mode_combo.addItem("Force OCR", "force")
+        self.ocr_mode_combo.setToolTip(
+            "Skip is fastest but can miss scanned bodies under digital headers. "
+            "Redo is intended for mixed pages or unreliable old OCR. "
+            "Force rasterizes everything and is the last-resort repair mode."
+        )
+        saved_mode = str(self._settings.value(OCR_MODE_SETTING, "smart"))
+        for index in range(self.ocr_mode_combo.count()):
+            if self.ocr_mode_combo.itemData(index) == saved_mode:
+                self.ocr_mode_combo.setCurrentIndex(index)
+                break
+        self.ocr_mode_combo.currentIndexChanged.connect(self._save_processing_preferences)
+
+        ocr_mode_row = QHBoxLayout()
+        ocr_mode_row.addWidget(QLabel("OCR mode:"))
+        ocr_mode_row.addWidget(self.ocr_mode_combo)
+        ocr_mode_row.addStretch()
+
         tesseract_layout = QVBoxLayout()
         tesseract_row = QHBoxLayout()
         self.tesseract_profile_combo = QComboBox()
@@ -157,6 +182,7 @@ class ApplicationWindow(MainWindow):
         output_parent = self.markdown_checkbox.parentWidget()
         if output_parent is not None and output_parent.layout() is not None:
             output_parent.layout().addLayout(options_row)
+            output_parent.layout().addLayout(ocr_mode_row)
             output_parent.layout().addLayout(tesseract_layout)
 
     def _save_processing_preferences(self) -> None:
@@ -169,6 +195,7 @@ class ApplicationWindow(MainWindow):
             DOCLING_CPU_ONLY_SETTING,
             self.cpu_only_checkbox.isChecked(),
         )
+        self._settings.setValue(OCR_MODE_SETTING, self.ocr_mode_combo.currentData())
         self._settings.sync()
 
     def refresh_tesseract_runtime(self) -> None:
@@ -403,6 +430,7 @@ class ApplicationWindow(MainWindow):
             language="+".join(selected_languages),
             executable=executable,
             tesseract_profile=profile,
+            ocr_mode=str(self.ocr_mode_combo.currentData() or "smart"),
         )
 
     def open_output_directory(self) -> None:

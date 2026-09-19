@@ -4,7 +4,7 @@ from PySide6.QtCore import QSettings, QUrl
 
 from filing_doc_converter import application_window
 from filing_doc_converter import main_window as base_main_window
-from filing_doc_converter.application_window import ApplicationWindow
+from filing_doc_converter.application_window import OCR_MODE_SETTING, ApplicationWindow
 from filing_doc_converter.model_management import ModelDirectoryState
 from filing_doc_converter.ocr_runtime import (
     TESSERACT_LANGUAGES_SETTING,
@@ -236,3 +236,35 @@ def test_selected_languages_are_passed_to_worker(monkeypatch, qtbot, tmp_path: P
     )
 
     assert worker._language == "eng+spa"
+
+
+def test_ocr_mode_selection_is_persisted_and_passed_to_worker(
+    monkeypatch,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    settings = QSettings(str(tmp_path / "settings4.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window._pdf_paths.append(tmp_path / "filing.pdf")
+    window.set_output_directory(tmp_path / "out")
+
+    window.ocr_mode_combo.setCurrentIndex(2)
+
+    assert str(settings.value(OCR_MODE_SETTING, "")) == "redo"
+    worker = window._create_processing_worker(
+        create_searchable_pdf=True,
+        create_markdown=False,
+        create_json=False,
+        executable="/tools/ocrmypdf",
+    )
+    assert worker._ocr_mode == "redo"

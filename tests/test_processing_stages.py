@@ -44,6 +44,7 @@ def test_worker_reports_ocr_and_docling_stages(monkeypatch, tmp_path: Path) -> N
 
     assert stages == [
         "Running OCRmyPDF",
+        "OCR mode: Skip OCR",
         "Loading models and analyzing pages",
         "Finalizing Markdown/JSON outputs",
     ]
