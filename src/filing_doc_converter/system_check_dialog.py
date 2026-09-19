@@ -88,6 +88,12 @@ class SystemCheckDialog(QDialog):
         self.system_label.setWordWrap(True)
         self.activity_status_label = QLabel("Status: Ready")
         self.activity_status_label.setWordWrap(True)
+        self.details_button = QPushButton("Show Setup Details")
+        self.details_button.clicked.connect(self._details_dialog.show)
+        status_row = QHBoxLayout()
+        status_row.addWidget(self.activity_status_label, 1)
+        status_row.addStretch()
+        status_row.addWidget(self.details_button)
 
         self.component_table = QTableWidget(0, 3)
         self.component_table.setHorizontalHeaderLabels(["Component", "Status", "Details"])
@@ -115,12 +121,9 @@ class SystemCheckDialog(QDialog):
         self.cancel_setup_button = QPushButton("Cancel Setup")
         self.cancel_setup_button.setEnabled(False)
         self.cancel_setup_button.clicked.connect(self.cancel_setup)
-        self.details_button = QPushButton("Show Setup Details")
-        self.details_button.clicked.connect(self._details_dialog.show)
         dependency_buttons = QHBoxLayout()
         dependency_buttons.addWidget(self.setup_dependencies_button)
         dependency_buttons.addWidget(self.cancel_setup_button)
-        dependency_buttons.addWidget(self.details_button)
         dependency_buttons.addStretch()
         dependency_layout = QVBoxLayout()
         dependency_layout.addWidget(
@@ -170,13 +173,16 @@ class SystemCheckDialog(QDialog):
 
         layout = QVBoxLayout()
         layout.addWidget(self.system_label)
-        layout.addWidget(self.activity_status_label)
+        layout.addLayout(status_row)
         layout.addWidget(self.component_table)
         layout.addWidget(self.guidance_label)
         layout.addWidget(dependency_group)
         layout.addWidget(model_group)
         layout.addLayout(buttons)
         self.setLayout(layout)
+        self.setTabOrder(self.details_button, self.setup_dependencies_button)
+        self.setTabOrder(self.setup_dependencies_button, self.cancel_setup_button)
+        self.setTabOrder(self.cancel_setup_button, self.choose_model_button)
 
         self.refresh()
 
