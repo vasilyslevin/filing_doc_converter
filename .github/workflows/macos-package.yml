@@ -92,8 +92,8 @@ jobs:
         run: |
           APP_EXEC="build/macos/dist/Source Document Converter.app/Contents/MacOS/SourceDocumentConverter"
           "$APP_EXEC" --package-smoke-test
-          "$APP_EXEC" --docling-tools --runtime-check
-          "$APP_EXEC" --docling-tools models download --help
+          "$APP_EXEC" --internal-docling-tools --runtime-check
+          "$APP_EXEC" --internal-docling-tools models download --help
 
       - name: Verify ad-hoc signature
         run: |

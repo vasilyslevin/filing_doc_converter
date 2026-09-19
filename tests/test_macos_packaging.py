@@ -72,3 +72,13 @@ def test_macos_build_script_signs_nested_binaries_before_bundle() -> None:
     assert 'codesign --force --sign - "$TARGET"' in script
     assert 'codesign --force --sign - "$APP_DIR"' in script
     assert 'codesign --force --deep --sign - "$APP_DIR"' not in script
+
+
+def test_macos_workflow_uses_internal_docling_tools_smoke_commands() -> None:
+    workflow = (
+        Path(__file__).parents[1] / ".github" / "workflows" / "macos-package.yml"
+    ).read_text(encoding="utf-8")
+
+    assert '"$APP_EXEC" --internal-docling-tools --runtime-check' in workflow
+    assert '"$APP_EXEC" --internal-docling-tools models download --help' in workflow
+    assert '"$APP_EXEC" --docling-tools --runtime-check' not in workflow

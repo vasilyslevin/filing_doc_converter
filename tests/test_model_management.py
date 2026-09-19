@@ -5,6 +5,7 @@ from PySide6.QtCore import QSettings
 
 from source_doc_converter import model_management
 from source_doc_converter.model_management import (
+    INTERNAL_DOCLING_TOOLS_FLAG,
     LEGACY_MODEL_DIRECTORY_ENV,
     LEGACY_MODEL_READY_MARKER,
     MODEL_DIRECTORY_ENV,
@@ -127,7 +128,7 @@ def test_download_command_is_an_argument_list(tmp_path: Path) -> None:
 
     command = build_model_download_command(
         destination,
-        executable="docling-tools",
+        command_prefix=["docling-tools"],
     )
 
     assert command == [
@@ -148,7 +149,7 @@ def test_source_run_resolves_downloader_from_path(monkeypatch) -> None:
         lambda executable: "C:/tools/docling-tools.exe",
     )
 
-    assert resolve_model_downloader() == "C:/tools/docling-tools.exe"
+    assert resolve_model_downloader() == ["C:/tools/docling-tools.exe"]
 
 
 def test_packaged_run_resolves_sibling_downloader(monkeypatch, tmp_path: Path) -> None:
@@ -156,6 +157,7 @@ def test_packaged_run_resolves_sibling_downloader(monkeypatch, tmp_path: Path) -
     companion = tmp_path / "docling-tools.exe"
     companion.write_bytes(b"packaged tool")
     monkeypatch.setattr(model_management, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(model_management.sys, "platform", "win32", raising=False)
     monkeypatch.setattr(model_management.sys, "executable", str(application))
     monkeypatch.setattr(
         model_management.shutil,
@@ -163,12 +165,13 @@ def test_packaged_run_resolves_sibling_downloader(monkeypatch, tmp_path: Path) -
         lambda executable: pytest.fail("PATH must not be used for a packaged application"),
     )
 
-    assert resolve_model_downloader() == str(companion.resolve())
+    assert resolve_model_downloader() == [str(companion.resolve())]
 
 
 def test_packaged_run_fails_closed_without_companion(monkeypatch, tmp_path: Path) -> None:
     application = tmp_path / "SourceDocumentConverter.exe"
     monkeypatch.setattr(model_management, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(model_management.sys, "platform", "win32", raising=False)
     monkeypatch.setattr(model_management.sys, "executable", str(application))
     monkeypatch.setattr(
         model_management.shutil,
@@ -182,9 +185,8 @@ def test_packaged_run_fails_closed_without_companion(monkeypatch, tmp_path: Path
 
 def test_packaged_run_accepts_macos_companion_without_exe(monkeypatch, tmp_path: Path) -> None:
     application = tmp_path / "SourceDocumentConverter"
-    companion = tmp_path / "docling-tools"
-    companion.write_bytes(b"packaged tool")
     monkeypatch.setattr(model_management, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(model_management.sys, "platform", "darwin", raising=False)
     monkeypatch.setattr(model_management.sys, "executable", str(application))
     monkeypatch.setattr(
         model_management.shutil,
@@ -192,7 +194,10 @@ def test_packaged_run_accepts_macos_companion_without_exe(monkeypatch, tmp_path:
         lambda executable: pytest.fail("PATH must not be used for a packaged application"),
     )
 
-    assert resolve_model_downloader() == str(companion.resolve())
+    assert resolve_model_downloader() == [
+        str(application.resolve()),
+        INTERNAL_DOCLING_TOOLS_FLAG,
+    ]
 
 
 def test_missing_downloader_is_reported(monkeypatch, tmp_path: Path) -> None:

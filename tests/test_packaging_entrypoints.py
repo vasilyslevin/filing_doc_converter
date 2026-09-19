@@ -21,8 +21,9 @@ def test_package_smoke_test_checks_window_and_companion(monkeypatch) -> None:
     monkeypatch.setattr(
         application_entry,
         "resolve_model_downloader",
-        lambda: events.append("companion") or "docling-tools.exe",
+        lambda: events.append("companion") or ["docling-tools.exe"],
     )
+    monkeypatch.setattr(application_entry, "is_packaged_application", lambda: False)
     pypdf_module = ModuleType("pypdf")
     pypdf_module.PdfReader = type("FakePdfReader", (), {})
     monkeypatch.setitem(sys.modules, "pypdf", pypdf_module)
@@ -108,8 +109,43 @@ def test_main_dispatches_docling_tools_mode_without_gui(monkeypatch) -> None:
     monkeypatch.setattr(
         application_entry.sys,
         "argv",
-        ["source-doc-converter", "--docling-tools", "--runtime-check"],
+        ["source-doc-converter", "--internal-docling-tools", "--runtime-check"],
     )
 
     assert application_entry.main() == 0
     assert calls == [["--runtime-check"]]
+
+
+def test_main_propagates_internal_docling_tools_exit_code(monkeypatch) -> None:
+    monkeypatch.setattr(application_entry.multiprocessing, "freeze_support", lambda: None)
+    monkeypatch.setattr(application_entry, "prepare_packaged_path", lambda: None)
+    monkeypatch.setattr(application_entry, "run_docling_tools_command", lambda arguments: 17)
+    monkeypatch.setattr(
+        application_entry.sys,
+        "argv",
+        ["source-doc-converter", "--internal-docling-tools", "models", "download", "--help"],
+    )
+
+    assert application_entry.main() == 17
+
+
+def test_package_smoke_test_requires_internal_macos_dispatch(monkeypatch, tmp_path: Path) -> None:
+    class FakeWindow:
+        def close(self) -> None:
+            return None
+
+    executable = tmp_path / "SourceDocumentConverter"
+    monkeypatch.setattr(application_entry, "ApplicationWindow", FakeWindow)
+    monkeypatch.setattr(application_entry, "is_packaged_application", lambda: True)
+    monkeypatch.setattr(application_entry.sys, "platform", "darwin", raising=False)
+    monkeypatch.setattr(application_entry.sys, "executable", str(executable))
+    monkeypatch.setattr(
+        application_entry,
+        "resolve_model_downloader",
+        lambda: [str(executable.resolve()), "--internal-docling-tools"],
+    )
+    pypdf_module = ModuleType("pypdf")
+    pypdf_module.PdfReader = type("FakePdfReader", (), {})
+    monkeypatch.setitem(sys.modules, "pypdf", pypdf_module)
+
+    assert application_entry.run_package_smoke_test() == 0
