@@ -1,7 +1,5 @@
 # Source Document Converter
 
-> **Work in progress:** This project is under active development and is not ready for production or court use.
-
 Source Document Converter is a local-first desktop application for preparing PDF source materials—including research papers, legal filings, reports, exhibits, and scanned records—for search, citation, and AI-assisted analysis. It creates searchable PDFs and structured Markdown or JSON while keeping documents and processing local.
 
 ## Use cases
