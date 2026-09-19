@@ -62,6 +62,40 @@ if not isinstance(version, str) or not version.strip():
 print(version.strip())
 ' "$PYPROJECT_PATH")"
 
+SCIPY_ARRAY_API_NAMESPACE="$("$PYTHON_BIN" -c '
+import importlib
+from scipy import ndimage
+
+array_api_namespaces = (
+    "scipy._external.array_api_compat",
+    "scipy._lib.array_api_compat",
+)
+detected_namespace = None
+for namespace in array_api_namespaces:
+    try:
+        importlib.import_module(f"{namespace}.numpy.fft")
+    except ModuleNotFoundError:
+        continue
+    detected_namespace = namespace
+    break
+
+if detected_namespace is None:
+    raise SystemExit(
+        "SciPy array API compatibility module is unavailable "
+        "(expected scipy._external.array_api_compat.numpy.fft or scipy._lib.array_api_compat.numpy.fft)."
+    )
+
+result = ndimage.gaussian_filter1d([1.0, 2.0, 3.0], sigma=0.1)
+if len(result) != 3:
+    raise SystemExit("SciPy ndimage pre-freeze check produced an unexpected result.")
+
+print(detected_namespace)
+')"
+if [[ -z "$SCIPY_ARRAY_API_NAMESPACE" ]]; then
+  echo "Could not detect SciPy array API compatibility namespace." >&2
+  exit 1
+fi
+
 "$PYTHON_BIN" "$SCRIPT_DIR/create_icns.py" "$ICON_SOURCE" "$ICON_PATH"
 
 COMMON_ARGS=(
@@ -83,6 +117,7 @@ DOCLING_ARGS=(
   --collect-all=pypdf
   --collect-all=rapidocr
   --collect-all=transformers
+  "--collect-submodules=$SCIPY_ARRAY_API_NAMESPACE.numpy"
   --hidden-import=docling.cli.tools
   --hidden-import=docling.document_converter
 )

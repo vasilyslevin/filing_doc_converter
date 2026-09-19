@@ -4,13 +4,37 @@ RUNTIME_CHECK_FLAG = "--runtime-check"
 
 
 def run_runtime_check() -> int:
+    import importlib
+
     from docling.document_converter import DocumentConverter
     from pypdf import PdfReader
+    from scipy import ndimage
     from transformers import AutoImageProcessor
+
+    array_api_module = None
+    for module_name in (
+        "scipy._external.array_api_compat.numpy.fft",
+        "scipy._lib.array_api_compat.numpy.fft",
+    ):
+        try:
+            importlib.import_module(module_name)
+            array_api_module = module_name
+            break
+        except ModuleNotFoundError:
+            continue
+    if array_api_module is None:
+        raise ModuleNotFoundError(
+            "No SciPy array API compatibility FFT module found in runtime."
+        )
+
+    filtered = ndimage.gaussian_filter1d([1.0, 2.0, 3.0], sigma=0.1)
+    if len(filtered) != 3:
+        raise RuntimeError("SciPy ndimage runtime check returned an unexpected result.")
 
     print(f"AutoImageProcessor: {AutoImageProcessor.__name__}")
     print(f"DocumentConverter: {DocumentConverter.__name__}")
     print(f"PdfReader: {PdfReader.__name__}")
+    print(f"SciPyArrayAPI: {array_api_module}")
     return 0
 
 

@@ -58,6 +58,40 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $TorchvisionExtension -PathType Leaf
     throw "Could not locate the installed torchvision native extension."
 }
 
+$CheckSciPyRuntime = @'
+import importlib
+from scipy import ndimage
+
+array_api_namespaces = (
+    "scipy._external.array_api_compat",
+    "scipy._lib.array_api_compat",
+)
+detected_namespace = None
+for namespace in array_api_namespaces:
+    try:
+        importlib.import_module(f"{namespace}.numpy.fft")
+    except ModuleNotFoundError:
+        continue
+    detected_namespace = namespace
+    break
+
+if detected_namespace is None:
+    raise SystemExit(
+        "SciPy array API compatibility module is unavailable "
+        "(expected scipy._external.array_api_compat.numpy.fft or scipy._lib.array_api_compat.numpy.fft)."
+    )
+
+result = ndimage.gaussian_filter1d([1.0, 2.0, 3.0], sigma=0.1)
+if len(result) != 3:
+    raise SystemExit("SciPy ndimage pre-freeze check produced an unexpected result.")
+
+print(detected_namespace)
+'@
+$ScipyArrayApiNamespace = (& $Python -c $CheckSciPyRuntime).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ScipyArrayApiNamespace)) {
+    throw "SciPy pre-freeze check failed."
+}
+
 $CommonArguments = @(
     "-m", "PyInstaller",
     "--noconfirm",
@@ -74,6 +108,7 @@ $DoclingArguments = @(
     "--collect-all=pypdf",
     "--collect-all=rapidocr",
     "--collect-all=transformers",
+    "--collect-submodules=$ScipyArrayApiNamespace.numpy",
     "--collect-binaries=torchvision",
     "--add-binary=$TorchvisionExtension;torchvision",
     "--runtime-hook=$TorchvisionRuntimeHook",
