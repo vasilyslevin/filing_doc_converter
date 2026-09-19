@@ -20,16 +20,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from filing_doc_converter.dependency_setup import DependencySetupWorker
-from filing_doc_converter.error_dialog import ErrorDetailsDialog
-from filing_doc_converter.model_downloader import ModelDownloadWorker
-from filing_doc_converter.model_management import (
+from source_doc_converter.dependency_setup import DependencySetupWorker
+from source_doc_converter.error_dialog import ErrorDetailsDialog
+from source_doc_converter.model_downloader import ModelDownloadWorker
+from source_doc_converter.model_management import (
     ModelDirectoryState,
     load_model_directory,
     reset_model_directory,
     save_model_directory,
 )
-from filing_doc_converter.system_diagnostics import (
+from source_doc_converter.system_diagnostics import (
     SystemDiagnostics,
     collect_system_diagnostics,
     installation_guidance,
@@ -231,7 +231,7 @@ class SystemCheckDialog(QDialog):
             not managed and state.source == "settings" and not active
         )
         self.choose_model_button.setToolTip(
-            "The folder is controlled by FILING_DOC_CONVERTER_MODEL_DIR."
+            "The folder is controlled by SOURCE_DOC_CONVERTER_MODEL_DIR."
             if managed
             else ""
         )
@@ -416,7 +416,7 @@ class SystemCheckDialog(QDialog):
 
     def _populate(self, diagnostics: SystemDiagnostics) -> None:
         self.system_label.setText(
-            f"Filing Document Converter {diagnostics.application_version}<br>"
+            f"Source Document Converter {diagnostics.application_version}<br>"
             f"{diagnostics.operating_system} {diagnostics.operating_system_version} "
             f"({diagnostics.architecture})<br>"
             f"Python {diagnostics.python_version}; PySide6 {diagnostics.pyside_version}"

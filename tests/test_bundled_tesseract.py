@@ -3,8 +3,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings
 
-from filing_doc_converter import ocr_runtime
-from filing_doc_converter.ocr_runtime import (
+from source_doc_converter import ocr_runtime
+from source_doc_converter.ocr_runtime import (
     TESSERACT_PROFILE_MODE_SETTING,
     TESSERACT_PROFILE_PATH_SETTING,
     TesseractInstallation,

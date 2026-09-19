@@ -1,6 +1,6 @@
-from filing_doc_converter import dependency_setup
-from filing_doc_converter.dependency_setup import DependencyInstallStep, DependencySetupWorker
-from filing_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
+from source_doc_converter import dependency_setup
+from source_doc_converter.dependency_setup import DependencyInstallStep, DependencySetupWorker
+from source_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
 
 
 def diagnostics(missing: tuple[str, ...]) -> SystemDiagnostics:

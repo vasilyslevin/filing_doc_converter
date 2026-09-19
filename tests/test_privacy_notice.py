@@ -2,8 +2,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings
 
-from filing_doc_converter import privacy_notice
-from filing_doc_converter.privacy_notice import (
+from source_doc_converter import privacy_notice
+from source_doc_converter.privacy_notice import (
     PRIVACY_NOTICE_KEY,
     PRIVACY_NOTICE_VERSION,
     show_first_run_privacy_notice,

@@ -8,20 +8,20 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Event
 
-from filing_doc_converter.docling_runtime import (
+from source_doc_converter.docling_runtime import (
     DoclingRuntimeUnavailableError,
     LocalModelsUnavailableError,
     create_local_pdf_converter_with_metrics,
     offline_environment,
     require_ready_model_directory,
 )
-from filing_doc_converter.ocr_runtime import (
+from source_doc_converter.ocr_runtime import (
     TesseractRuntimeProfile,
     build_ocr_environment,
     resolve_ocrmypdf_executable,
     resolve_tesseract_profile,
 )
-from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
+from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 
 class OcrError(RuntimeError):

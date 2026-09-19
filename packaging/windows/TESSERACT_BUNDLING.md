@@ -53,7 +53,7 @@ Invoke-WebRequest -Uri $Url -OutFile tesseract-installer.exe
 After `build.ps1` completes:
 
 ```powershell
-$Dist = Join-Path $PWD "build\windows\dist\FilingDocumentConverter"
+$Dist = Join-Path $PWD "build\windows\dist\SourceDocumentConverter"
 $env:TESSDATA_PREFIX = Join-Path $Dist "tools\tesseract\tessdata"
 & (Join-Path $Dist "tools\tesseract\tesseract.exe") --version
 & (Join-Path $Dist "tools\tesseract\tesseract.exe") --list-langs

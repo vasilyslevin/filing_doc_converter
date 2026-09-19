@@ -2,8 +2,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-from filing_doc_converter import app as application_entry
-from filing_doc_converter import docling_tools_entry, ocrmypdf_entry
+from source_doc_converter import app as application_entry
+from source_doc_converter import docling_tools_entry, ocrmypdf_entry
 
 
 def test_package_smoke_test_checks_window_and_companion(monkeypatch) -> None:
@@ -28,7 +28,7 @@ def test_package_smoke_test_checks_window_and_companion(monkeypatch) -> None:
 
 
 def test_prepare_packaged_path_is_noop(monkeypatch, tmp_path: Path) -> None:
-    executable = tmp_path / "FilingDocumentConverter.exe"
+    executable = tmp_path / "SourceDocumentConverter.exe"
     monkeypatch.setattr(application_entry.sys, "executable", str(executable))
     monkeypatch.setenv("PATH", str(tmp_path / "existing"))
 

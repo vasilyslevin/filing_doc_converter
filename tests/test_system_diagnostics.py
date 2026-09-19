@@ -1,8 +1,8 @@
 import subprocess
 from importlib.machinery import ModuleSpec
 
-from filing_doc_converter import system_diagnostics
-from filing_doc_converter.system_diagnostics import (
+from source_doc_converter import system_diagnostics
+from source_doc_converter.system_diagnostics import (
     ComponentStatus,
     SystemDiagnostics,
     check_docling,

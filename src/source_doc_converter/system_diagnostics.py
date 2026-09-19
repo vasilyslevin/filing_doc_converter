@@ -7,16 +7,16 @@ from dataclasses import dataclass
 
 from PySide6 import __version__ as PYSIDE_VERSION
 
-from filing_doc_converter import __version__
-from filing_doc_converter.model_management import is_packaged_application, load_model_directory
-from filing_doc_converter.ocr_runtime import (
+from source_doc_converter import __version__
+from source_doc_converter.model_management import is_packaged_application, load_model_directory
+from source_doc_converter.ocr_runtime import (
     build_ocr_environment,
     discover_tesseract_installations,
     resolve_ocrmypdf_executable,
     resolve_tesseract_executable,
     resolve_tesseract_profile,
 )
-from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
+from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 
 @dataclass(frozen=True)
@@ -54,7 +54,7 @@ class SystemDiagnostics:
 
     def to_text(self) -> str:
         lines = [
-            "Filing Document Converter - System Check",
+            "Source Document Converter - System Check",
             f"Application: {self.application_version}",
             f"Operating system: {self.operating_system} {self.operating_system_version}",
             f"Architecture: {self.architecture}",

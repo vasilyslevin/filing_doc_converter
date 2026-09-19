@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Filing Document Converter is licensed under the MIT License. It uses or can integrate with third-party software and model artifacts distributed under separate licenses.
+Source Document Converter is licensed under the MIT License. It uses or can integrate with third-party software and model artifacts distributed under separate licenses.
 
 This file is a development-stage notice. Before publishing packaged executables, the release process must generate and review a complete software bill of materials covering all direct and transitive packages, native libraries, OCR engines, model files, dictionaries, and other artifacts included in or downloaded by each release.
 

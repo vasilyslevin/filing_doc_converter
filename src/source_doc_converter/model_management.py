@@ -7,9 +7,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings, QStandardPaths
 
-MODEL_DIRECTORY_ENV = "FILING_DOC_CONVERTER_MODEL_DIR"
+MODEL_DIRECTORY_ENV = "SOURCE_DOC_CONVERTER_MODEL_DIR"
+LEGACY_MODEL_DIRECTORY_ENV = "FILING_DOC_CONVERTER_MODEL_DIR"
 MODEL_DIRECTORY_SETTING = "models/directory"
-MODEL_READY_MARKER = ".filing-doc-converter-models-ready"
+MODEL_READY_MARKER = ".source-doc-converter-models-ready"
+LEGACY_MODEL_READY_MARKER = ".filing-doc-converter-models-ready"
 PACKAGED_DOWNLOADER_NAME = "docling-tools.exe"
 EXPECTED_MODEL_DIRECTORIES = (
     "docling-project--docling-layout-heron",
@@ -40,6 +42,15 @@ def default_model_directory() -> Path:
         QStandardPaths.StandardLocation.GenericDataLocation
     )
     if data_root:
+        return _normalise_path(Path(data_root) / "SourceDocumentConverter" / "models")
+    return _normalise_path(Path.home() / ".source_doc_converter" / "models")
+
+
+def legacy_default_model_directory() -> Path:
+    data_root = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.GenericDataLocation
+    )
+    if data_root:
         return _normalise_path(Path(data_root) / "FilingDocumentConverter" / "models")
     return _normalise_path(Path.home() / ".filing_doc_converter" / "models")
 
@@ -50,7 +61,9 @@ def load_model_directory(
     environ: Mapping[str, str] | None = None,
 ) -> ModelDirectoryState:
     environment = os.environ if environ is None else environ
-    override = environment.get(MODEL_DIRECTORY_ENV, "").strip()
+    override = environment.get(MODEL_DIRECTORY_ENV, "").strip() or environment.get(
+        LEGACY_MODEL_DIRECTORY_ENV, ""
+    ).strip()
     if override:
         path = _normalise_path(override)
         return ModelDirectoryState(path, "environment", models_ready(path))
@@ -94,9 +107,13 @@ def downloaded_models_complete(path: str | Path) -> bool:
 
 def models_ready(path: str | Path) -> bool:
     directory = _normalise_path(path)
-    marker = directory / MODEL_READY_MARKER
-    marker_ready = marker.is_file() and any(
-        item.is_file() and item != marker for item in directory.rglob("*")
+    marker_candidates = (
+        directory / MODEL_READY_MARKER,
+        directory / LEGACY_MODEL_READY_MARKER,
+    )
+    marker_ready = any(
+        marker.is_file() and any(item.is_file() and item != marker for item in directory.rglob("*"))
+        for marker in marker_candidates
     )
     return marker_ready or downloaded_models_complete(directory)
 

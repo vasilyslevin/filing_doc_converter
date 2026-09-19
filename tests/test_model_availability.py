@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from filing_doc_converter import system_diagnostics
-from filing_doc_converter.model_management import ModelDirectoryState
+from source_doc_converter import system_diagnostics
+from source_doc_converter.model_management import ModelDirectoryState
 
 
 def test_docling_output_requires_installed_local_models(monkeypatch) -> None:

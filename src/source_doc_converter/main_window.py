@@ -18,8 +18,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from filing_doc_converter.ocr_pipeline import find_ocrmypdf
-from filing_doc_converter.ocr_worker import ProcessingWorker
+from source_doc_converter.ocr_pipeline import find_ocrmypdf
+from source_doc_converter.ocr_worker import ProcessingWorker
 
 
 class PdfDropArea(QLabel):
@@ -69,7 +69,7 @@ class MainWindow(QMainWindow):
         self._thread: QThread | None = None
         self._worker: ProcessingWorker | None = None
 
-        self.setWindowTitle("Filing Document Converter")
+        self.setWindowTitle("Source Document Converter")
         self.resize(760, 680)
 
         self.drop_area = PdfDropArea()

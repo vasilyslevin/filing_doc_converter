@@ -19,16 +19,16 @@ from PySide6.QtWidgets import (
     QListWidgetItem as QtListWidgetItem,
 )
 
-from filing_doc_converter.docling_runtime import (
+from source_doc_converter.docling_runtime import (
     _cpu_thread_count,
 )
-from filing_doc_converter.error_dialog import ErrorDetailsDialog
-from filing_doc_converter.main_window import MainWindow
-from filing_doc_converter.model_management import (
+from source_doc_converter.error_dialog import ErrorDetailsDialog
+from source_doc_converter.main_window import MainWindow
+from source_doc_converter.model_management import (
     ModelDirectoryState,
     load_model_directory,
 )
-from filing_doc_converter.ocr_runtime import (
+from source_doc_converter.ocr_runtime import (
     TESSERACT_PROFILE_MODE_SETTING,
     TESSERACT_PROFILE_PATH_SETTING,
     TesseractInstallation,
@@ -38,9 +38,9 @@ from filing_doc_converter.ocr_runtime import (
     save_language_selection,
     validate_tesseract_executable,
 )
-from filing_doc_converter.ocr_worker import ProcessingWorker
-from filing_doc_converter.system_check_dialog import SystemCheckDialog
-from filing_doc_converter.system_diagnostics import (
+from source_doc_converter.ocr_worker import ProcessingWorker
+from source_doc_converter.system_check_dialog import SystemCheckDialog
+from source_doc_converter.system_diagnostics import (
     OutputAvailability,
     SystemDiagnostics,
     check_output_availability,

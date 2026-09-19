@@ -5,8 +5,8 @@ from threading import Event
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
-from filing_doc_converter.system_diagnostics import (
+from source_doc_converter.subprocess_utils import background_subprocess_kwargs
+from source_doc_converter.system_diagnostics import (
     ComponentStatus,
     SystemDiagnostics,
     collect_system_diagnostics,

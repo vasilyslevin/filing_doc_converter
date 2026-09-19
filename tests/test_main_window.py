@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from filing_doc_converter.main_window import MainWindow
+from source_doc_converter.main_window import MainWindow
 
 
 def make_pdf(path: Path) -> Path:
@@ -12,7 +12,7 @@ def test_window_launches(qtbot) -> None:
     window = MainWindow()
     qtbot.addWidget(window)
 
-    assert window.windowTitle() == "Filing Document Converter"
+    assert window.windowTitle() == "Source Document Converter"
     assert window.queue.count() == 0
     assert window.searchable_pdf_checkbox.isChecked()
     assert window.markdown_checkbox.isEnabled()

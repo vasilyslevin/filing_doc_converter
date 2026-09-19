@@ -1,8 +1,8 @@
-# Filing Document Converter Project Plan
+# Source Document Converter Project Plan
 
 ## Purpose
 
-Filing Document Converter is a local-first desktop application that helps judges, law clerks, lawyers, and other users convert long legal PDF filings into searchable PDFs and structured files suitable for AI-assisted review.
+Source Document Converter is a local-first desktop application that helps judges, law clerks, lawyers, and other users convert long legal PDF filings into searchable PDFs and structured files suitable for AI-assisted review.
 
 The application does not determine legal conclusions. Generated Markdown and JSON are working derivatives. The original PDF remains the authoritative source.
 
@@ -65,7 +65,7 @@ When OCR and Docling are selected together, Docling reads the newly created sear
 ## Architecture
 
 ```text
-src/filing_doc_converter/
+src/source_doc_converter/
 ├── app.py                    Application entry point and application identity
 ├── application_window.py     Environment-aware window features
 ├── main_window.py            Document queue and processing interface

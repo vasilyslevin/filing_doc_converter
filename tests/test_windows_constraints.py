@@ -106,7 +106,8 @@ def test_windows_build_supports_lite_package() -> None:
     assert '[ValidateSet("Full", "Lite")]' in build_script
     assert '$PackageFlavor = "Full"' in build_script
     assert "build.ps1 -PackageFlavor Lite" in workflow
-    assert "FilingDocumentConverter-Windows-x64-Lite" in workflow
+    assert "SourceDocumentConverter-Windows-x64-Full" in workflow
+    assert "SourceDocumentConverter-Windows-x64-Lite" in workflow
     assert "Install Missing Dependencies" in notes
 
 

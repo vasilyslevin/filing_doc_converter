@@ -45,7 +45,7 @@ Python 3.11 or later is required.
 python -m venv .venv
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-python -m filing_doc_converter
+python -m source_doc_converter
 ```
 
 Install optional conversion components as needed:
@@ -96,7 +96,7 @@ Markdown and JSON require local Docling model artifacts. The application does no
 
 1. Open **Help > System Check**.
 2. Select **Choose Model Folder**.
-3. Choose a dedicated directory. On one managed Windows workstation this may be `D:\mdl\filing_doc_converter`; other users may choose a suitable local directory.
+3. Choose a dedicated directory. On one managed Windows workstation this may be `D:\mdl\source_doc_converter`; other users may choose a suitable local directory.
 4. Select **Download Models**.
 5. Read the network and privacy explanation.
 6. Approve the download.
@@ -106,15 +106,15 @@ Markdown and JSON require local Docling model artifacts. The application does no
 The selected directory is persisted locally. Managed installations can override it before starting the application:
 
 ```powershell
-$env:FILING_DOC_CONVERTER_MODEL_DIR = "D:\mdl\filing_doc_converter"
-python -m filing_doc_converter
+$env:SOURCE_DOC_CONVERTER_MODEL_DIR = "D:\mdl\source_doc_converter"
+python -m source_doc_converter
 ```
 
 On Linux or macOS:
 
 ```bash
-export FILING_DOC_CONVERTER_MODEL_DIR="$HOME/models/filing_doc_converter"
-python -m filing_doc_converter
+export SOURCE_DOC_CONVERTER_MODEL_DIR="$HOME/models/source_doc_converter"
+python -m source_doc_converter
 ```
 
 The environment override takes precedence over the saved selection. When active, the folder selector is disabled to make the managed configuration clear.
@@ -150,7 +150,7 @@ These controls reduce unintended network access but are not a substitute for ope
 
 ## Using the application
 
-1. Start the application with `python -m filing_doc_converter`.
+1. Start the application with `python -m source_doc_converter`.
 2. Open **Help > System Check** and verify the required components.
 3. Complete local model setup if Markdown or JSON is required.
 4. Drop PDF files or a folder into the application.
