@@ -2,14 +2,13 @@ name: Windows development package
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - ".github/workflows/windows-package.yml"
-      - "packaging/windows/**"
-      - "src/source_doc_converter/**"
-      - "pyproject.toml"
-      - "LICENSE"
-      - "THIRD_PARTY_NOTICES.md"
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   package:

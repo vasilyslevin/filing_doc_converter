@@ -255,6 +255,8 @@ The Windows packaging workflow now bundles a pinned UB-Mannheim Tesseract runtim
 
 The workflow also builds a **Lite** Windows package that excludes OCRmyPDF and bundled Tesseract. The Lite package relies on guided dependency setup from **Help > System Check**.
 
+Before publishing a release, manually run the **Windows development package** workflow and confirm both Full and Lite packaging jobs succeed for the release tag.
+
 ## Privacy and security
 
 - Documents are processed locally.
