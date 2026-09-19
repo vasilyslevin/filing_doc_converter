@@ -98,7 +98,7 @@ def test_local_converter_applies_offline_environment(monkeypatch, tmp_path: Path
     captured = {}
     fake_converter = object()
 
-    def fake_create(model_directory: Path):
+    def fake_create(model_directory: Path, **kwargs):
         captured["directory"] = model_directory
         captured["offline"] = {
             key: docling_runtime.os.environ.get(key)

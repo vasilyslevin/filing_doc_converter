@@ -3,8 +3,7 @@ from pathlib import Path
 from filing_doc_converter import docling_runtime
 
 
-def test_cpu_fast_profile_and_converter_reuse(monkeypatch, tmp_path: Path) -> None:
-    captured = {}
+def test_converter_reuse_for_compatible_options(monkeypatch, tmp_path: Path) -> None:
     created = []
 
     class FakeInputFormat:
@@ -12,17 +11,15 @@ def test_cpu_fast_profile_and_converter_reuse(monkeypatch, tmp_path: Path) -> No
 
     class FakePipelineOptions:
         def __init__(self, **kwargs):
-            captured["pipeline_options"] = kwargs
-            self.do_ocr = True
-            self.do_table_structure = True
+            self.do_ocr = False
+            self.do_table_structure = False
 
     class FakePdfFormatOption:
         def __init__(self, **kwargs):
-            captured["format_option"] = kwargs
+            pass
 
     class FakeDocumentConverter:
         def __init__(self, **kwargs):
-            captured["converter"] = kwargs
             created.append(self)
 
     monkeypatch.setattr(
@@ -35,21 +32,84 @@ def test_cpu_fast_profile_and_converter_reuse(monkeypatch, tmp_path: Path) -> No
             FakeInputFormat,
         ),
     )
-    monkeypatch.delenv(docling_runtime.DOCLING_OCR_ENV, raising=False)
-    monkeypatch.delenv(docling_runtime.DOCLING_TABLES_ENV, raising=False)
     docling_runtime.clear_converter_cache()
 
-    first = docling_runtime.create_local_pdf_converter(tmp_path / "models")
-    second = docling_runtime.create_local_pdf_converter(tmp_path / "models")
+    first, first_metrics = docling_runtime.create_local_pdf_converter_with_metrics(
+        tmp_path / "models",
+        do_ocr=False,
+        do_tables=False,
+        device="cpu",
+        parser_threads=2,
+        inference_threads=2,
+    )
+    second, second_metrics = docling_runtime.create_local_pdf_converter_with_metrics(
+        tmp_path / "models",
+        do_ocr=False,
+        do_tables=False,
+        device="cpu",
+        parser_threads=2,
+        inference_threads=2,
+    )
 
-    pipeline_options = captured["format_option"]["pipeline_options"]
-    assert not pipeline_options.do_ocr
-    assert not pipeline_options.do_table_structure
     assert first is second
     assert len(created) == 1
+    assert not first_metrics.cache_hit
+    assert second_metrics.cache_hit
 
 
-def test_detailed_options_are_selectable(monkeypatch, tmp_path: Path) -> None:
+def test_converter_cache_invalidation_on_option_change(monkeypatch, tmp_path: Path) -> None:
+    created = []
+
+    class FakeInputFormat:
+        PDF = "pdf"
+
+    class FakePipelineOptions:
+        def __init__(self, **kwargs):
+            self.do_ocr = False
+            self.do_table_structure = False
+
+    class FakePdfFormatOption:
+        def __init__(self, **kwargs):
+            pass
+
+    class FakeDocumentConverter:
+        def __init__(self, **kwargs):
+            created.append(kwargs)
+
+    monkeypatch.setattr(
+        docling_runtime,
+        "_load_docling_components",
+        lambda: (
+            FakeDocumentConverter,
+            FakePdfFormatOption,
+            FakePipelineOptions,
+            FakeInputFormat,
+        ),
+    )
+    docling_runtime.clear_converter_cache()
+
+    one = docling_runtime.create_local_pdf_converter(
+        tmp_path / "models",
+        do_ocr=False,
+        do_tables=False,
+        device="cpu",
+        parser_threads=2,
+        inference_threads=2,
+    )
+    two = docling_runtime.create_local_pdf_converter(
+        tmp_path / "models",
+        do_ocr=False,
+        do_tables=True,
+        device="cpu",
+        parser_threads=2,
+        inference_threads=2,
+    )
+
+    assert one is not two
+    assert len(created) == 2
+
+
+def test_parser_and_inference_threads_are_applied(monkeypatch, tmp_path: Path) -> None:
     captured = {}
 
     class FakeInputFormat:
@@ -59,6 +119,8 @@ def test_detailed_options_are_selectable(monkeypatch, tmp_path: Path) -> None:
         def __init__(self, **kwargs):
             self.do_ocr = False
             self.do_table_structure = False
+            self.document_parsing_num_threads = None
+            self.inference_num_threads = None
 
     class FakePdfFormatOption:
         def __init__(self, **kwargs):
@@ -78,11 +140,14 @@ def test_detailed_options_are_selectable(monkeypatch, tmp_path: Path) -> None:
             FakeInputFormat,
         ),
     )
-    monkeypatch.setenv(docling_runtime.DOCLING_OCR_ENV, "1")
-    monkeypatch.setenv(docling_runtime.DOCLING_TABLES_ENV, "1")
     docling_runtime.clear_converter_cache()
 
-    docling_runtime.create_local_pdf_converter(tmp_path / "models")
+    docling_runtime.create_local_pdf_converter(
+        tmp_path / "models",
+        parser_threads=3,
+        inference_threads=2,
+    )
+    pipeline_options = captured["pipeline_options"]
 
-    assert captured["pipeline_options"].do_ocr
-    assert captured["pipeline_options"].do_table_structure
+    assert pipeline_options.document_parsing_num_threads == 3
+    assert pipeline_options.inference_num_threads == 2

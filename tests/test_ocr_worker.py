@@ -34,7 +34,10 @@ def test_worker_reports_ocr_success(monkeypatch, tmp_path: Path) -> None:
 
     worker.run()
 
-    assert successes == [(str(source), str(destination))]
+    assert len(successes) == 1
+    assert successes[0][0] == str(source)
+    assert str(destination) in successes[0][1]
+    assert "Timing: Total per file " in successes[0][1]
     assert summaries == [(False, 1, 0)]
 
 
@@ -63,7 +66,10 @@ def test_worker_routes_original_pdf_to_docling_when_ocr_disabled(monkeypatch, tm
     worker.run()
 
     assert called_with == [source]
-    assert successes == [(str(source), str(markdown_file))]
+    assert len(successes) == 1
+    assert successes[0][0] == str(source)
+    assert str(markdown_file) in successes[0][1]
+    assert "Timing: Total per file " in successes[0][1]
 
 
 def test_worker_routes_searchable_pdf_to_docling_when_both_selected(
@@ -101,7 +107,11 @@ def test_worker_routes_searchable_pdf_to_docling_when_both_selected(
     worker.run()
 
     assert called_with == [searchable]
-    assert successes == [(str(source), f"{searchable}\n{markdown}\n{json_file}")]
+    assert len(successes) == 1
+    assert successes[0][0] == str(source)
+    assert str(searchable) in successes[0][1]
+    assert str(markdown) in successes[0][1]
+    assert str(json_file) in successes[0][1]
 
 
 def test_worker_continues_after_failure(monkeypatch, tmp_path: Path) -> None:

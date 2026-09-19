@@ -2,6 +2,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -10,7 +11,9 @@ from threading import Event
 from filing_doc_converter.docling_runtime import (
     DoclingRuntimeUnavailableError,
     LocalModelsUnavailableError,
-    local_pdf_converter,
+    create_local_pdf_converter_with_metrics,
+    offline_environment,
+    require_ready_model_directory,
 )
 from filing_doc_converter.ocr_runtime import (
     TesseractRuntimeProfile,
@@ -58,6 +61,7 @@ class OcrResult:
     stderr: str
     effective_mode: str = "skip"
     warnings: tuple[str, ...] = ()
+    timings: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,9 @@ class DoclingResult:
     input_path: Path
     markdown_path: Path | None
     json_path: Path | None
+    effective_analysis_mode: str = "accurate"
+    warnings: tuple[str, ...] = ()
+    timings: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -90,6 +97,13 @@ class OcrValidationReport:
     warnings: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class SmartPreflightDecision:
+    selected_mode: str
+    reason: str
+    warnings: tuple[str, ...]
+
+
 def find_ocrmypdf() -> str | None:
     return resolve_ocrmypdf_executable()
 
@@ -111,14 +125,20 @@ def normalize_ocr_mode(value: str) -> str:
     return aliases.get(mode, "smart")
 
 
-def ocr_mode_label(mode: str) -> str:
-    labels = {
-        "smart": "Smart legal document (recommended)",
-        "skip": "Skip existing text",
-        "redo": "Redo OCR",
-        "force": "Force OCR",
+def normalize_ai_analysis_mode(value: str) -> str:
+    mode = value.strip().lower().replace("_", "-")
+    aliases = {
+        "auto": "auto",
+        "auto (recommended)": "auto",
+        "fast": "fast",
+        "fast markdown": "fast",
+        "accurate": "accurate",
+        "accurate markdown": "accurate",
+        "accurate with tables": "accurate_tables",
+        "accurate-tables": "accurate_tables",
+        "accurate_tables": "accurate_tables",
     }
-    return labels.get(normalize_ocr_mode(mode), labels["smart"])
+    return aliases.get(mode, "auto")
 
 
 def ocr_mode_warning(mode: str) -> str:
@@ -128,6 +148,16 @@ def ocr_mode_warning(mode: str) -> str:
         "force": "Force rasterizes everything and is the last-resort repair mode.",
     }
     return warnings.get(normalize_ocr_mode(mode), "")
+
+
+def analysis_mode_label(mode: str) -> str:
+    labels = {
+        "auto": "Auto (recommended)",
+        "fast": "Fast Markdown",
+        "accurate": "Accurate Markdown",
+        "accurate_tables": "Accurate with tables",
+    }
+    return labels.get(normalize_ai_analysis_mode(mode), labels["auto"])
 
 
 def searchable_output_path(input_path: Path, output_directory: Path) -> Path:
@@ -149,17 +179,14 @@ def plan_ocr_command(
     executable: str = "ocrmypdf",
     language: str = "eng",
     mode: str = "skip",
+    ocr_workers: int = 2,
     rotate_pages: bool = True,
     deskew: bool = True,
 ) -> OcrCommandPlan:
     requested_mode = normalize_ocr_mode(mode)
     effective_mode = "skip" if requested_mode == "smart" else requested_mode
     warnings: list[str] = []
-    command = [
-        executable,
-        "--output-type",
-        "pdf",
-    ]
+    command = [executable, "--output-type", "pdf", "--jobs", str(max(1, ocr_workers))]
     if effective_mode == "skip":
         command.append("--skip-text")
     elif effective_mode == "redo":
@@ -178,12 +205,7 @@ def plan_ocr_command(
         if deskew:
             command.append("--deskew")
 
-    command.extend([
-        "--language",
-        language,
-        str(input_path),
-        str(output_path),
-    ])
+    command.extend(["--language", language, str(input_path), str(output_path)])
     return OcrCommandPlan(
         requested_mode=requested_mode,
         effective_mode=effective_mode,
@@ -271,7 +293,6 @@ def _validate_pdf_text(pdf_path: Path) -> OcrValidationReport | None:
     meaningful: list[int] = []
     weak: list[int] = []
     blank: list[int] = []
-
     for page in analyses:
         stripped = page.text.strip()
         if not stripped and not page.has_raster_content:
@@ -295,6 +316,62 @@ def _validate_pdf_text(pdf_path: Path) -> OcrValidationReport | None:
         weak_pages=tuple(weak),
         blank_pages=tuple(blank),
         warnings=tuple(warnings),
+    )
+
+
+def _smart_preflight_decision(pdf_path: Path) -> SmartPreflightDecision:
+    analyses = _analyze_pdf_pages(pdf_path)
+    if not analyses:
+        return SmartPreflightDecision(
+            selected_mode="redo",
+            reason="preflight-unavailable",
+            warnings=("Smart preflight unavailable; using safe Redo OCR fallback.",),
+        )
+
+    mixed_pages: list[int] = []
+    meaningful_pages = 0
+    blank_pages = 0
+    for page in analyses:
+        stripped = page.text.strip()
+        if not stripped and not page.has_raster_content:
+            blank_pages += 1
+            continue
+        meaningful = _meaningful_body_text(page.text)
+        if meaningful:
+            meaningful_pages += 1
+        token_count = len(re.findall(r"[A-Za-z0-9]{3,}", stripped))
+        header_only = any(_header_line(line.strip()) for line in page.text.splitlines() if line.strip())
+        if page.has_raster_content and not meaningful and (header_only or token_count < 20):
+            mixed_pages.append(page.page_number)
+
+    if mixed_pages:
+        page_list = ", ".join(str(page) for page in mixed_pages)
+        return SmartPreflightDecision(
+            selected_mode="redo",
+            reason="mixed-pages",
+            warnings=(
+                f"Smart preflight detected mixed searchable-header pages ({page_list}); using Redo OCR.",
+            ),
+        )
+
+    if meaningful_pages > 0 and mixed_pages == []:
+        return SmartPreflightDecision(
+            selected_mode="skip",
+            reason="searchable",
+            warnings=("Smart preflight detected meaningful searchable text; using Skip existing text.",),
+        )
+
+    if blank_pages == len(analyses):
+        return SmartPreflightDecision(
+            selected_mode="skip",
+            reason="blank-document",
+            warnings=("Smart preflight detected only blank pages; using Skip existing text.",),
+        )
+
+    return SmartPreflightDecision(
+        selected_mode="redo",
+        reason="inconclusive",
+        warnings=("Smart preflight was inconclusive; using safe Redo OCR fallback.",),
     )
 
 
@@ -378,6 +455,55 @@ def _write_text_atomic(destination: Path, content: str) -> None:
             temp_path.unlink(missing_ok=True)
 
 
+def _fast_markdown_export(source: Path) -> str:
+    try:
+        from pypdf import PdfReader
+    except ImportError as error:
+        raise ConversionError("Fast Markdown mode requires pypdf support in this runtime.") from error
+
+    reader = PdfReader(str(source))
+    chunks: list[str] = []
+    for index, page in enumerate(reader.pages):
+        text = (page.extract_text() or "").rstrip()
+        if text:
+            chunks.append(text)
+        if index < len(reader.pages) - 1:
+            chunks.append("<!-- PDF_PAGE_BREAK -->")
+    return "\n\n".join(chunks)
+
+
+def _auto_analysis_mode(
+    source: Path,
+    *,
+    export_markdown: bool,
+    export_json: bool,
+    docling_ocr: bool,
+    prefer_tables: bool,
+) -> tuple[str, tuple[str, ...]]:
+    if prefer_tables:
+        return "accurate_tables", ()
+    if export_json:
+        return "accurate", ("Auto mode selected Accurate because JSON export requires standard pipeline.",)
+    if docling_ocr:
+        return "accurate", ("Auto mode selected Accurate because Docling OCR is enabled.",)
+    if not export_markdown:
+        return "accurate", ()
+
+    report = _validate_pdf_text(source)
+    if report is None:
+        return (
+            "accurate",
+            ("Auto mode could not preflight embedded text; using compatibility Accurate mode.",),
+        )
+    if report.meaningful_pages and not report.weak_pages:
+        return "fast", ("Auto mode selected Fast Markdown for searchable embedded text.",)
+    return "accurate", ("Auto mode selected Accurate for scanned or mixed-content pages.",)
+
+
+def _timings_tuple(values: dict[str, float]) -> tuple[tuple[str, float], ...]:
+    return tuple((key, round(value, 4)) for key, value in values.items())
+
+
 def run_docling(
     input_path: Path,
     output_directory: Path,
@@ -387,6 +513,11 @@ def run_docling(
     output_stem: str | None = None,
     model_directory: Path | None = None,
     cancel_event: Event | None = None,
+    analysis_mode: str = "auto",
+    docling_ocr: bool = False,
+    parser_threads: int = 2,
+    inference_threads: int = 2,
+    device: str = "cpu",
 ) -> DoclingResult:
     source = input_path.resolve()
     if not source.is_file():
@@ -407,48 +538,90 @@ def run_docling(
     markdown_destination = (
         destination_directory / f"{destination_stem}.md" if export_markdown else None
     )
-    json_destination = (
-        destination_directory / f"{destination_stem}.json" if export_json else None
-    )
-
+    json_destination = destination_directory / f"{destination_stem}.json" if export_json else None
     for destination in (markdown_destination, json_destination):
         if destination is not None and destination.exists():
             raise OutputCollisionError(
                 f"Output already exists and will not be overwritten: {destination}"
             )
 
+    requested_mode = normalize_ai_analysis_mode(analysis_mode)
+    warnings: list[str] = []
+    if requested_mode == "auto":
+        effective_mode, auto_warnings = _auto_analysis_mode(
+            source,
+            export_markdown=export_markdown,
+            export_json=export_json,
+            docling_ocr=docling_ocr,
+            prefer_tables=False,
+        )
+        warnings.extend(auto_warnings)
+    else:
+        effective_mode = requested_mode
+
+    if effective_mode == "fast" and export_json:
+        warnings.append(
+            "Fast Markdown is incompatible with JSON export in this runtime; using Accurate fallback."
+        )
+        effective_mode = "accurate"
+
     created_paths: list[Path] = []
+    timings: dict[str, float] = {}
+    total_started = time.monotonic()
     try:
-        with local_pdf_converter(model_directory) as converter:
-            try:
+        if effective_mode == "fast":
+            parse_started = time.monotonic()
+            markdown = _fast_markdown_export(source)
+            timings["PDF parsing"] = time.monotonic() - parse_started
+            export_started = time.monotonic()
+            if markdown_destination is None:
+                raise ConversionError("Fast Markdown mode requires markdown output.")
+            _write_text_atomic(markdown_destination, markdown)
+            created_paths.append(markdown_destination)
+            timings["Markdown/JSON export"] = time.monotonic() - export_started
+            timings["Docling process startup"] = 0.0
+            timings["Model/converter initialization"] = 0.0
+            timings["Layout inference"] = 0.0
+            timings["Table inference"] = 0.0
+        else:
+            directory = require_ready_model_directory(model_directory)
+            do_tables = effective_mode == "accurate_tables"
+            startup_started = time.monotonic()
+            with offline_environment(
+                directory,
+                device=device,
+                parser_threads=parser_threads,
+                inference_threads=inference_threads,
+            ):
+                timings["Docling process startup"] = time.monotonic() - startup_started
+                converter, converter_metrics = create_local_pdf_converter_with_metrics(
+                    directory,
+                    do_ocr=docling_ocr,
+                    do_tables=do_tables,
+                    device=device,
+                    parser_threads=parser_threads,
+                    inference_threads=inference_threads,
+                )
+                timings["Model/converter initialization"] = converter_metrics.init_seconds
+                parse_started = time.monotonic()
                 result = converter.convert(source)
-            except Exception as error:
-                raise ConversionError(
-                    f"Docling conversion failed for {source.name}: {error}"
-                ) from error
-
-            if cancel_event is not None and cancel_event.is_set():
-                raise OcrCancelledError(f"Processing cancelled: {source.name}")
-
-            try:
+                parse_elapsed = time.monotonic() - parse_started
+                timings["PDF parsing"] = parse_elapsed
+                timings["Layout inference"] = parse_elapsed
+                timings["Table inference"] = parse_elapsed if do_tables else 0.0
+                export_started = time.monotonic()
                 if markdown_destination is not None:
                     markdown = result.document.export_to_markdown(
                         page_break_placeholder="<!-- PDF_PAGE_BREAK -->"
                     )
                     _write_text_atomic(markdown_destination, markdown)
                     created_paths.append(markdown_destination)
-
                 if json_destination is not None:
                     exported = result.document.export_to_dict()
                     payload = json.dumps(exported, ensure_ascii=False, indent=2)
                     _write_text_atomic(json_destination, payload)
                     created_paths.append(json_destination)
-            except OcrError:
-                raise
-            except Exception as error:
-                raise ConversionError(
-                    f"Docling export failed for {source.name}: {error}"
-                ) from error
+                timings["Markdown/JSON export"] = time.monotonic() - export_started
     except LocalModelsUnavailableError as error:
         raise DoclingModelsUnavailableError(str(error)) from error
     except DoclingRuntimeUnavailableError as error:
@@ -464,10 +637,14 @@ def run_docling(
             f"Docling conversion failed for {source.name}: {error}"
         ) from error
 
+    timings["Total per file"] = time.monotonic() - total_started
     return DoclingResult(
         input_path=source,
         markdown_path=markdown_destination,
         json_path=json_destination,
+        effective_analysis_mode=effective_mode,
+        warnings=tuple(dict.fromkeys(item for item in warnings if item.strip())),
+        timings=_timings_tuple(timings),
     )
 
 
@@ -480,6 +657,7 @@ def run_ocr(
     tesseract_profile: TesseractRuntimeProfile | None = None,
     cancel_event: Event | None = None,
     mode: str = "smart",
+    ocr_workers: int = 2,
 ) -> OcrResult:
     source = input_path.resolve()
     if not source.is_file():
@@ -499,20 +677,34 @@ def run_ocr(
     if destination.exists():
         raise OcrError(f"Output already exists and will not be overwritten: {destination}")
 
+    timings: dict[str, float] = {}
+    warnings: list[str] = []
     requested_mode = normalize_ocr_mode(mode)
+    selected_mode = requested_mode
+    if requested_mode == "smart":
+        preflight_started = time.monotonic()
+        decision = _smart_preflight_decision(source)
+        timings["PDF/OCR preflight"] = time.monotonic() - preflight_started
+        selected_mode = decision.selected_mode
+        warnings.extend(decision.warnings)
+    else:
+        timings["PDF/OCR preflight"] = 0.0
+
     profile = tesseract_profile or resolve_tesseract_profile()
     plan = plan_ocr_command(
         source,
         destination,
         executable=resolved_executable,
         language=language,
-        mode=requested_mode,
+        mode=selected_mode,
+        ocr_workers=ocr_workers,
     )
-    warnings: list[str] = list(plan.warnings)
+    warnings.extend(plan.warnings)
     mode_tip = ocr_mode_warning(plan.effective_mode)
     if mode_tip:
         warnings.append(mode_tip)
 
+    ocr_started = time.monotonic()
     stdout, stderr = _execute_ocr_command(
         plan.command,
         source,
@@ -520,12 +712,16 @@ def run_ocr(
         profile=profile,
         cancel_event=cancel_event,
     )
+    timings["OCRmyPDF"] = time.monotonic() - ocr_started
     effective_mode = plan.effective_mode
+
+    validation_started = time.monotonic()
     report = _validate_pdf_text(destination)
-    if requested_mode == "smart" and report is not None and report.weak_pages:
+    timings["Post-OCR validation"] = time.monotonic() - validation_started
+    if requested_mode == "smart" and selected_mode == "skip" and report is not None and report.weak_pages:
         weak_pages = ", ".join(str(page) for page in report.weak_pages)
         warnings.append(
-            "Smart mode detected mixed/header-only text on pages "
+            "Smart post-check detected weak pages "
             + weak_pages
             + "; retrying with Redo OCR."
         )
@@ -536,8 +732,10 @@ def run_ocr(
             executable=resolved_executable,
             language=language,
             mode="redo",
+            ocr_workers=ocr_workers,
         )
         warnings.extend(redo_plan.warnings)
+        redo_started = time.monotonic()
         redo_stdout, redo_stderr = _execute_ocr_command(
             redo_plan.command,
             source,
@@ -545,11 +743,14 @@ def run_ocr(
             profile=profile,
             cancel_event=cancel_event,
         )
+        timings["OCRmyPDF"] += time.monotonic() - redo_started
         stdout = f"{stdout}\n\n{redo_stdout}".strip()
         stderr = f"{stderr}\n\n{redo_stderr}".strip()
         plan = redo_plan
         effective_mode = "redo"
+        validation_started = time.monotonic()
         report = _validate_pdf_text(destination)
+        timings["Post-OCR validation"] += time.monotonic() - validation_started
 
     if report is not None:
         warnings.extend(report.warnings)
@@ -571,4 +772,5 @@ def run_ocr(
         stderr=stderr,
         effective_mode=effective_mode,
         warnings=tuple(dict.fromkeys(item for item in warnings if item.strip())),
+        timings=_timings_tuple(timings),
     )

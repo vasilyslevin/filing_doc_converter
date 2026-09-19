@@ -1,14 +1,9 @@
-import os
 from pathlib import Path
 
 from PySide6.QtCore import QSettings
 
+from filing_doc_converter import application_window
 from filing_doc_converter.application_window import ApplicationWindow
-from filing_doc_converter.docling_runtime import (
-    DOCLING_CPU_ONLY_ENV,
-    DOCLING_OCR_ENV,
-    DOCLING_TABLES_ENV,
-)
 from filing_doc_converter.model_management import ModelDirectoryState
 from filing_doc_converter.system_diagnostics import OutputAvailability
 
@@ -27,18 +22,14 @@ def make_window(qtbot, settings: QSettings) -> ApplicationWindow:
     return window
 
 
-def test_docling_performance_controls_default_to_fast_mode(qtbot, tmp_path: Path) -> None:
+def test_docling_performance_controls_defaults(qtbot, tmp_path: Path) -> None:
     window = make_window(qtbot, make_settings(tmp_path))
 
     assert not window.docling_ocr_checkbox.isChecked()
     assert not window.table_structure_checkbox.isChecked()
     assert window.cpu_only_checkbox.isChecked()
-
-    window.start_processing()
-
-    assert os.environ[DOCLING_OCR_ENV] == "0"
-    assert os.environ[DOCLING_TABLES_ENV] == "0"
-    assert os.environ[DOCLING_CPU_ONLY_ENV] == "1"
+    assert window.ai_analysis_mode_combo.currentData() == "auto"
+    assert window.processing_profile_combo.currentData() == "balanced"
 
 
 def test_processing_choices_persist_between_windows(qtbot, tmp_path: Path) -> None:
@@ -47,18 +38,23 @@ def test_processing_choices_persist_between_windows(qtbot, tmp_path: Path) -> No
     first.docling_ocr_checkbox.setChecked(True)
     first.table_structure_checkbox.setChecked(True)
     first.cpu_only_checkbox.setChecked(False)
+    first.ai_analysis_mode_combo.setCurrentIndex(3)
+    first.processing_profile_combo.setCurrentIndex(0)
 
     second = make_window(qtbot, settings)
 
     assert second.docling_ocr_checkbox.isChecked()
     assert second.table_structure_checkbox.isChecked()
     assert not second.cpu_only_checkbox.isChecked()
+    assert second.ai_analysis_mode_combo.currentData() == "accurate_tables"
+    assert second.processing_profile_combo.currentData() == "max_speed"
 
 
-def test_gpu_auto_detection_can_be_selected(qtbot, tmp_path: Path) -> None:
+def test_energy_saver_profile_uses_expected_thread_budget(monkeypatch, qtbot, tmp_path: Path) -> None:
+    monkeypatch.setattr(application_window, "_cpu_thread_count", lambda: 12)
     window = make_window(qtbot, make_settings(tmp_path))
-    window.cpu_only_checkbox.setChecked(False)
+    window.processing_profile_combo.setCurrentIndex(2)
 
-    window.start_processing()
+    ocr_workers, parser_threads, inference_threads = window._thread_profile_values()
 
-    assert os.environ[DOCLING_CPU_ONLY_ENV] == "0"
+    assert (ocr_workers, parser_threads, inference_threads) == (2, 2, 1)

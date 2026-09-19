@@ -200,6 +200,21 @@ OCR mode is also persisted per user:
 - **Redo OCR** is intended for mixed pages or unreliable old OCR.
 - **Force OCR** rasterizes everything and is the last-resort repair mode.
 
+AI analysis mode is persisted separately from OCR mode:
+
+- **Auto (recommended)** preflights the effective PDF and uses Fast Markdown for meaningful embedded text when complex tables are not requested; otherwise it uses Accurate mode.
+- **Fast Markdown** favors speed and embedded-text extraction while preserving page order and `<!-- PDF_PAGE_BREAK -->`.
+- **Accurate Markdown** uses the standard Docling layout pipeline.
+- **Accurate with tables** enables table-structure analysis and is the slowest option.
+
+Processing profiles are also persisted:
+
+- **Maximum speed**: higher safe OCR/Docling thread counts.
+- **Balanced**: moderate OCR/parser/inference thread counts.
+- **Energy saver**: 2 OCR workers with reduced Docling parser/inference threads.
+
+For typical legal filings, start with **Auto** AI analysis plus **Smart** OCR.
+
 ## Offline smoke test
 
 After model setup:

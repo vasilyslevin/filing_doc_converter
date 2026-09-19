@@ -1,4 +1,3 @@
-import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,9 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from filing_doc_converter.docling_runtime import (
-    DOCLING_CPU_ONLY_ENV,
-    DOCLING_OCR_ENV,
-    DOCLING_TABLES_ENV,
+    _cpu_thread_count,
 )
 from filing_doc_converter.error_dialog import ErrorDetailsDialog
 from filing_doc_converter.main_window import MainWindow
@@ -53,6 +50,8 @@ DOCLING_OCR_SETTING = "processing/docling_ocr"
 DOCLING_TABLES_SETTING = "processing/docling_tables"
 DOCLING_CPU_ONLY_SETTING = "processing/docling_cpu_only"
 OCR_MODE_SETTING = "processing/ocr_mode"
+AI_ANALYSIS_MODE_SETTING = "processing/ai_analysis_mode"
+PROCESSING_PROFILE_SETTING = "processing/performance_profile"
 
 
 def format_elapsed(milliseconds: int) -> str:
@@ -162,6 +161,45 @@ class ApplicationWindow(MainWindow):
         ocr_mode_row.addWidget(QLabel("OCR mode:"))
         ocr_mode_row.addWidget(self.ocr_mode_combo)
         ocr_mode_row.addStretch()
+        self.ai_analysis_mode_combo = QComboBox()
+        self.ai_analysis_mode_combo.addItem("Auto (recommended)", "auto")
+        self.ai_analysis_mode_combo.addItem("Fast Markdown", "fast")
+        self.ai_analysis_mode_combo.addItem("Accurate Markdown", "accurate")
+        self.ai_analysis_mode_combo.addItem("Accurate with tables", "accurate_tables")
+        self.ai_analysis_mode_combo.setToolTip(
+            "Auto picks Fast for searchable text without complex table analysis. "
+            "Fast is quickest plain-text markdown. Accurate preserves richer layout. "
+            "Accurate with tables is slowest but improves table structure."
+        )
+        saved_analysis_mode = str(self._settings.value(AI_ANALYSIS_MODE_SETTING, "auto"))
+        for index in range(self.ai_analysis_mode_combo.count()):
+            if self.ai_analysis_mode_combo.itemData(index) == saved_analysis_mode:
+                self.ai_analysis_mode_combo.setCurrentIndex(index)
+                break
+        self.ai_analysis_mode_combo.currentIndexChanged.connect(self._save_processing_preferences)
+        ai_mode_row = QHBoxLayout()
+        ai_mode_row.addWidget(QLabel("AI analysis mode:"))
+        ai_mode_row.addWidget(self.ai_analysis_mode_combo)
+        ai_mode_row.addStretch()
+
+        self.processing_profile_combo = QComboBox()
+        self.processing_profile_combo.addItem("Maximum speed", "max_speed")
+        self.processing_profile_combo.addItem("Balanced", "balanced")
+        self.processing_profile_combo.addItem("Energy saver", "energy_saver")
+        self.processing_profile_combo.setToolTip(
+            "Maximum speed uses higher safe worker counts. "
+            "Balanced is moderate. Energy saver uses 2 OCR workers and lower Docling threads."
+        )
+        saved_profile = str(self._settings.value(PROCESSING_PROFILE_SETTING, "balanced"))
+        for index in range(self.processing_profile_combo.count()):
+            if self.processing_profile_combo.itemData(index) == saved_profile:
+                self.processing_profile_combo.setCurrentIndex(index)
+                break
+        self.processing_profile_combo.currentIndexChanged.connect(self._save_processing_preferences)
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(QLabel("Processing profile:"))
+        profile_row.addWidget(self.processing_profile_combo)
+        profile_row.addStretch()
 
         tesseract_layout = QVBoxLayout()
         tesseract_row = QHBoxLayout()
@@ -183,6 +221,8 @@ class ApplicationWindow(MainWindow):
         if output_parent is not None and output_parent.layout() is not None:
             output_parent.layout().addLayout(options_row)
             output_parent.layout().addLayout(ocr_mode_row)
+            output_parent.layout().addLayout(ai_mode_row)
+            output_parent.layout().addLayout(profile_row)
             output_parent.layout().addLayout(tesseract_layout)
 
     def _save_processing_preferences(self) -> None:
@@ -196,6 +236,14 @@ class ApplicationWindow(MainWindow):
             self.cpu_only_checkbox.isChecked(),
         )
         self._settings.setValue(OCR_MODE_SETTING, self.ocr_mode_combo.currentData())
+        self._settings.setValue(
+            AI_ANALYSIS_MODE_SETTING,
+            self.ai_analysis_mode_combo.currentData(),
+        )
+        self._settings.setValue(
+            PROCESSING_PROFILE_SETTING,
+            self.processing_profile_combo.currentData(),
+        )
         self._settings.sync()
 
     def refresh_tesseract_runtime(self) -> None:
@@ -365,11 +413,6 @@ class ApplicationWindow(MainWindow):
         ErrorDetailsDialog(detail, self).exec()
 
     def start_processing(self) -> None:
-        os.environ[DOCLING_OCR_ENV] = "1" if self.docling_ocr_checkbox.isChecked() else "0"
-        os.environ[DOCLING_TABLES_ENV] = (
-            "1" if self.table_structure_checkbox.isChecked() else "0"
-        )
-        os.environ[DOCLING_CPU_ONLY_ENV] = "1" if self.cpu_only_checkbox.isChecked() else "0"
         if self.searchable_pdf_checkbox.isChecked() and self._pdf_paths and self.output_directory is not None:
             profile = resolve_tesseract_profile(
                 self._settings,
@@ -421,6 +464,11 @@ class ApplicationWindow(MainWindow):
             installations=self._tesseract_installations,
         )
         selected_languages = load_language_selection(self._settings)
+        ocr_workers, parser_threads, inference_threads = self._thread_profile_values()
+        analysis_mode = str(self.ai_analysis_mode_combo.currentData() or "auto")
+        if self.table_structure_checkbox.isChecked() and analysis_mode in {"auto", "accurate"}:
+            analysis_mode = "accurate_tables"
+        device = "cpu" if self.cpu_only_checkbox.isChecked() else "auto"
         return ProcessingWorker(
             tuple(self._pdf_paths),
             self.output_directory,
@@ -431,7 +479,28 @@ class ApplicationWindow(MainWindow):
             executable=executable,
             tesseract_profile=profile,
             ocr_mode=str(self.ocr_mode_combo.currentData() or "smart"),
+            analysis_mode=analysis_mode,
+            docling_ocr=self.docling_ocr_checkbox.isChecked(),
+            docling_device=device,
+            ocr_workers=ocr_workers,
+            parser_threads=parser_threads,
+            inference_threads=inference_threads,
         )
+
+    def _thread_profile_values(self) -> tuple[int, int, int]:
+        cpu_count = _cpu_thread_count()
+        profile = str(self.processing_profile_combo.currentData() or "balanced")
+        if profile == "max_speed":
+            ocr_workers = max(2, min(8, cpu_count - 1))
+            parser_threads = max(2, min(6, cpu_count // 2 or 2))
+            inference_threads = max(2, min(6, cpu_count // 2 or 2))
+            return ocr_workers, parser_threads, inference_threads
+        if profile == "energy_saver":
+            return 2, 2, 1
+        ocr_workers = max(2, min(4, cpu_count // 2 or 2))
+        parser_threads = max(2, min(4, cpu_count // 3 or 2))
+        inference_threads = max(2, min(4, cpu_count // 3 or 2))
+        return ocr_workers, parser_threads, inference_threads
 
     def open_output_directory(self) -> None:
         output_directory = self.output_directory

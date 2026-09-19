@@ -4,7 +4,12 @@ from PySide6.QtCore import QSettings, QUrl
 
 from filing_doc_converter import application_window
 from filing_doc_converter import main_window as base_main_window
-from filing_doc_converter.application_window import OCR_MODE_SETTING, ApplicationWindow
+from filing_doc_converter.application_window import (
+    AI_ANALYSIS_MODE_SETTING,
+    OCR_MODE_SETTING,
+    PROCESSING_PROFILE_SETTING,
+    ApplicationWindow,
+)
 from filing_doc_converter.model_management import ModelDirectoryState
 from filing_doc_converter.ocr_runtime import (
     TESSERACT_LANGUAGES_SETTING,
@@ -268,3 +273,74 @@ def test_ocr_mode_selection_is_persisted_and_passed_to_worker(
         executable="/tools/ocrmypdf",
     )
     assert worker._ocr_mode == "redo"
+
+
+def test_ai_mode_and_profile_are_persisted_and_passed_to_worker(
+    monkeypatch,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    monkeypatch.setattr(application_window, "_cpu_thread_count", lambda: 8)
+    settings = QSettings(str(tmp_path / "settings5.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window._pdf_paths.append(tmp_path / "filing.pdf")
+    window.set_output_directory(tmp_path / "out")
+    window.ai_analysis_mode_combo.setCurrentIndex(1)
+    window.processing_profile_combo.setCurrentIndex(2)
+    window.cpu_only_checkbox.setChecked(True)
+
+    assert str(settings.value(AI_ANALYSIS_MODE_SETTING, "")) == "fast"
+    assert str(settings.value(PROCESSING_PROFILE_SETTING, "")) == "energy_saver"
+    worker = window._create_processing_worker(
+        create_searchable_pdf=True,
+        create_markdown=True,
+        create_json=False,
+        executable="/tools/ocrmypdf",
+    )
+    assert worker._analysis_mode == "fast"
+    assert worker._ocr_workers == 2
+    assert worker._parser_threads == 2
+    assert worker._inference_threads == 1
+
+
+def test_auto_analysis_with_table_request_uses_table_mode_without_overwriting_selection(
+    monkeypatch,
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    settings = QSettings(str(tmp_path / "settings6.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window._pdf_paths.append(tmp_path / "filing.pdf")
+    window.set_output_directory(tmp_path / "out")
+    window.ai_analysis_mode_combo.setCurrentIndex(0)
+    window.table_structure_checkbox.setChecked(True)
+
+    worker = window._create_processing_worker(
+        create_searchable_pdf=False,
+        create_markdown=True,
+        create_json=False,
+        executable=None,
+    )
+
+    assert window.ai_analysis_mode_combo.currentData() == "auto"
+    assert worker._analysis_mode == "accurate_tables"
