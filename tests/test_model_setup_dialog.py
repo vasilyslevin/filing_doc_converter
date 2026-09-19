@@ -3,10 +3,10 @@ from pathlib import Path
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QMessageBox
 
-from filing_doc_converter import system_check_dialog
-from filing_doc_converter.model_management import ModelDirectoryState
-from filing_doc_converter.system_check_dialog import SystemCheckDialog
-from filing_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
+from source_doc_converter import system_check_dialog
+from source_doc_converter.model_management import ModelDirectoryState
+from source_doc_converter.system_check_dialog import SystemCheckDialog
+from source_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
 
 
 def sample_diagnostics() -> SystemDiagnostics:
@@ -47,6 +47,7 @@ def test_model_status_shows_ready_without_hiding_folder(monkeypatch, qtbot, tmp_
 
 
 def test_choose_model_folder_is_persisted(monkeypatch, qtbot, tmp_path: Path) -> None:
+    monkeypatch.delenv("SOURCE_DOC_CONVERTER_MODEL_DIR", raising=False)
     monkeypatch.delenv("FILING_DOC_CONVERTER_MODEL_DIR", raising=False)
     selected = tmp_path / "selected-models"
     selected.mkdir()

@@ -158,7 +158,7 @@ function Invoke-CheckedExecutable {
 }
 
 $BundleRoot = if ([string]::IsNullOrWhiteSpace($WorkDirectory)) {
-    Join-Path ([System.IO.Path]::GetTempPath()) "filing-doc-converter\tesseract-bundle"
+    Join-Path ([System.IO.Path]::GetTempPath()) "source-doc-converter\tesseract-bundle"
 } else {
     [System.IO.Path]::GetFullPath($WorkDirectory)
 }

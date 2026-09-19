@@ -2,22 +2,22 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings, QUrl
 
-from filing_doc_converter import application_window
-from filing_doc_converter import main_window as base_main_window
-from filing_doc_converter.application_window import (
+from source_doc_converter import application_window
+from source_doc_converter import main_window as base_main_window
+from source_doc_converter.application_window import (
     AI_ANALYSIS_MODE_SETTING,
     OCR_MODE_SETTING,
     PROCESSING_PROFILE_SETTING,
     ApplicationWindow,
 )
-from filing_doc_converter.model_management import ModelDirectoryState
-from filing_doc_converter.ocr_runtime import (
+from source_doc_converter.model_management import ModelDirectoryState
+from source_doc_converter.ocr_runtime import (
     TESSERACT_LANGUAGES_SETTING,
     TESSERACT_PROFILE_MODE_SETTING,
     TESSERACT_PROFILE_PATH_SETTING,
     TesseractInstallation,
 )
-from filing_doc_converter.system_diagnostics import (
+from source_doc_converter.system_diagnostics import (
     ComponentStatus,
     OutputAvailability,
     SystemDiagnostics,

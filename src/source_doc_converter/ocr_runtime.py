@@ -7,8 +7,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings
 
-from filing_doc_converter.model_management import is_packaged_application
-from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
+from source_doc_converter.model_management import is_packaged_application
+from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 TESSERACT_PROFILE_MODE_SETTING = "ocr/tesseract_profile_mode"
 TESSERACT_PROFILE_PATH_SETTING = "ocr/tesseract_profile_path"

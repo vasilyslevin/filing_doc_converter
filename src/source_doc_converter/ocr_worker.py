@@ -4,14 +4,14 @@ from threading import Event
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from filing_doc_converter.ocr_pipeline import (
+from source_doc_converter.ocr_pipeline import (
     DoclingResult,
     OcrCancelledError,
     OcrError,
     run_docling,
     run_ocr,
 )
-from filing_doc_converter.ocr_runtime import TesseractRuntimeProfile
+from source_doc_converter.ocr_runtime import TesseractRuntimeProfile
 
 
 class ProcessingWorker(QObject):

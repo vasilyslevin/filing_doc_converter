@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from filing_doc_converter import ocr_worker
-from filing_doc_converter.ocr_pipeline import (
+from source_doc_converter import ocr_worker
+from source_doc_converter.ocr_pipeline import (
     DoclingResult,
     OcrCancelledError,
     OcrError,
     OcrResult,
 )
-from filing_doc_converter.ocr_worker import ProcessingWorker
+from source_doc_converter.ocr_worker import ProcessingWorker
 
 
 def test_worker_reports_ocr_success(monkeypatch, tmp_path: Path) -> None:

@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QApplication
 
-from filing_doc_converter.error_dialog import ErrorDetailsDialog
+from source_doc_converter.error_dialog import ErrorDetailsDialog
 
 
 def test_error_details_are_selectable_and_copyable(qtbot) -> None:

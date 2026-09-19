@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from filing_doc_converter.application_window import ApplicationWindow
-from filing_doc_converter.model_management import ModelDirectoryState
-from filing_doc_converter.system_diagnostics import OutputAvailability
+from source_doc_converter.application_window import ApplicationWindow
+from source_doc_converter.model_management import ModelDirectoryState
+from source_doc_converter.system_diagnostics import OutputAvailability
 
 
 def test_progress_is_busy_while_document_is_processing(qtbot) -> None:

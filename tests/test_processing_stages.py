@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from filing_doc_converter import ocr_worker
-from filing_doc_converter.application_window import format_elapsed
-from filing_doc_converter.ocr_pipeline import DoclingResult, OcrResult
-from filing_doc_converter.ocr_worker import ProcessingWorker
+from source_doc_converter import ocr_worker
+from source_doc_converter.application_window import format_elapsed
+from source_doc_converter.ocr_pipeline import DoclingResult, OcrResult
+from source_doc_converter.ocr_worker import ProcessingWorker
 
 
 def test_elapsed_time_formatting() -> None:

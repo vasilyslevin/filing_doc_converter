@@ -2,8 +2,8 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 
-from filing_doc_converter.system_check_dialog import SystemCheckDialog
-from filing_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
+from source_doc_converter.system_check_dialog import SystemCheckDialog
+from source_doc_converter.system_diagnostics import ComponentStatus, SystemDiagnostics
 
 
 def sample_diagnostics() -> SystemDiagnostics:
@@ -68,7 +68,7 @@ def test_save_report_writes_privacy_safe_text(qtbot, tmp_path: Path) -> None:
     dialog.save_report(destination)
 
     content = destination.read_text(encoding="utf-8")
-    assert "Filing Document Converter - System Check" in content
+    assert "Source Document Converter - System Check" in content
     assert "Docling: Unavailable" in content
     assert "secret.pdf" not in content
     assert "/home/" not in content

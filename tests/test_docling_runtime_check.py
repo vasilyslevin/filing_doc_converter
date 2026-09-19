@@ -1,7 +1,7 @@
 import sys
 from types import ModuleType
 
-from filing_doc_converter import docling_tools_entry
+from source_doc_converter import docling_tools_entry
 
 
 def test_runtime_check_resolves_auto_image_processor(monkeypatch, capsys) -> None:

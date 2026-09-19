@@ -1,9 +1,9 @@
-Filing Document Converter - unsigned development build
+Source Document Converter - unsigned development build
 
 This folder is not a production release. Keep the folder contents together.
 
 Executables:
-- FilingDocumentConverter.exe starts the desktop application.
+- SourceDocumentConverter.exe starts the desktop application.
 - docling-tools.exe is the companion used only for explicit model setup.
 - ocrmypdf.exe is the companion used to create searchable PDF output.
 

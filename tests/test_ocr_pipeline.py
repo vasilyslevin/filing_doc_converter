@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from filing_doc_converter import ocr_pipeline
-from filing_doc_converter.docling_runtime import ConverterBuildMetrics
-from filing_doc_converter.ocr_pipeline import (
+from source_doc_converter import ocr_pipeline
+from source_doc_converter.docling_runtime import ConverterBuildMetrics
+from source_doc_converter.ocr_pipeline import (
     OcrError,
     OcrPageAnalysis,
     OcrValidationReport,

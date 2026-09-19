@@ -6,12 +6,12 @@ from threading import Event
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from filing_doc_converter.model_management import (
+from source_doc_converter.model_management import (
     ModelManagementError,
     build_model_download_command,
     mark_models_ready,
 )
-from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
+from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 _SIZE_PROGRESS = re.compile(
     r"(?P<downloaded>\d+(?:\.\d+)?)\s*(?P<unit>[KMGTP]?B)\s*/\s*"

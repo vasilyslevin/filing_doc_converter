@@ -1,8 +1,8 @@
 import subprocess
 from pathlib import Path
 
-from filing_doc_converter import model_downloader
-from filing_doc_converter.model_downloader import ModelDownloadWorker
+from source_doc_converter import model_downloader
+from source_doc_converter.model_downloader import ModelDownloadWorker
 
 
 class FakeStdout:

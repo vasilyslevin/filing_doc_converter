@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from filing_doc_converter.model_management import (
+from source_doc_converter.model_management import (
     load_model_directory,
     models_ready,
 )
@@ -16,11 +16,16 @@ OFFLINE_ENVIRONMENT = {
     "TRANSFORMERS_OFFLINE": "1",
     "HF_DATASETS_OFFLINE": "1",
 }
-DOCLING_OCR_ENV = "FILING_DOC_CONVERTER_DO_OCR"
-DOCLING_TABLES_ENV = "FILING_DOC_CONVERTER_DO_TABLES"
-DOCLING_CPU_ONLY_ENV = "FILING_DOC_CONVERTER_CPU_ONLY"
-DOCLING_PARSER_THREADS_ENV = "FILING_DOC_CONVERTER_DOCLING_PARSER_THREADS"
-DOCLING_INFERENCE_THREADS_ENV = "FILING_DOC_CONVERTER_DOCLING_INFERENCE_THREADS"
+DOCLING_OCR_ENV = "SOURCE_DOC_CONVERTER_DO_OCR"
+LEGACY_DOCLING_OCR_ENV = "FILING_DOC_CONVERTER_DO_OCR"
+DOCLING_TABLES_ENV = "SOURCE_DOC_CONVERTER_DO_TABLES"
+LEGACY_DOCLING_TABLES_ENV = "FILING_DOC_CONVERTER_DO_TABLES"
+DOCLING_CPU_ONLY_ENV = "SOURCE_DOC_CONVERTER_CPU_ONLY"
+LEGACY_DOCLING_CPU_ONLY_ENV = "FILING_DOC_CONVERTER_CPU_ONLY"
+DOCLING_PARSER_THREADS_ENV = "SOURCE_DOC_CONVERTER_DOCLING_PARSER_THREADS"
+LEGACY_DOCLING_PARSER_THREADS_ENV = "FILING_DOC_CONVERTER_DOCLING_PARSER_THREADS"
+DOCLING_INFERENCE_THREADS_ENV = "SOURCE_DOC_CONVERTER_DOCLING_INFERENCE_THREADS"
+LEGACY_DOCLING_INFERENCE_THREADS_ENV = "FILING_DOC_CONVERTER_DOCLING_INFERENCE_THREADS"
 _CONVERTER_CACHE: dict[tuple[Path, bool, bool, str, int, int], object] = {}
 
 
@@ -74,6 +79,25 @@ def _environment_flag(name: str, *, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _environment_flag_with_legacy(name: str, legacy_name: str, *, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        value = os.environ.get(legacy_name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _environment_value_with_legacy(name: str, legacy_name: str) -> str | None:
+    value = os.environ.get(name)
+    if value is not None and value.strip():
+        return value
+    legacy = os.environ.get(legacy_name)
+    if legacy is not None and legacy.strip():
+        return legacy
+    return None
+
+
 def _safe_thread_count(value: int) -> int:
     return max(1, int(value))
 
@@ -83,19 +107,30 @@ def _cpu_thread_count() -> int:
 
 
 def _device_mode() -> str:
-    return "cpu" if _environment_flag(DOCLING_CPU_ONLY_ENV, default=True) else "auto"
+    return (
+        "cpu"
+        if _environment_flag_with_legacy(
+            DOCLING_CPU_ONLY_ENV,
+            LEGACY_DOCLING_CPU_ONLY_ENV,
+            default=True,
+        )
+        else "auto"
+    )
 
 
 def _default_parser_threads() -> int:
-    raw = os.environ.get(DOCLING_PARSER_THREADS_ENV)
-    if raw is not None and raw.strip():
+    raw = _environment_value_with_legacy(DOCLING_PARSER_THREADS_ENV, LEGACY_DOCLING_PARSER_THREADS_ENV)
+    if raw is not None:
         return _safe_thread_count(int(raw))
     return max(1, min(4, _cpu_thread_count()))
 
 
 def _default_inference_threads() -> int:
-    raw = os.environ.get(DOCLING_INFERENCE_THREADS_ENV)
-    if raw is not None and raw.strip():
+    raw = _environment_value_with_legacy(
+        DOCLING_INFERENCE_THREADS_ENV,
+        LEGACY_DOCLING_INFERENCE_THREADS_ENV,
+    )
+    if raw is not None:
         return _safe_thread_count(int(raw))
     return max(1, min(4, _cpu_thread_count()))
 
@@ -204,9 +239,15 @@ def create_local_pdf_converter_with_metrics(
     inference_threads: int | None = None,
 ) -> tuple[object, ConverterBuildMetrics]:
     directory = model_directory.expanduser().resolve()
-    resolved_do_ocr = _environment_flag(DOCLING_OCR_ENV) if do_ocr is None else do_ocr
+    resolved_do_ocr = (
+        _environment_flag_with_legacy(DOCLING_OCR_ENV, LEGACY_DOCLING_OCR_ENV)
+        if do_ocr is None
+        else do_ocr
+    )
     resolved_do_tables = (
-        _environment_flag(DOCLING_TABLES_ENV) if do_tables is None else do_tables
+        _environment_flag_with_legacy(DOCLING_TABLES_ENV, LEGACY_DOCLING_TABLES_ENV)
+        if do_tables is None
+        else do_tables
     )
     resolved_device = _device_mode() if device is None else device
     resolved_parser_threads = (

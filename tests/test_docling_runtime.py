@@ -2,15 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from filing_doc_converter import docling_runtime
-from filing_doc_converter.docling_runtime import (
+from source_doc_converter import docling_runtime
+from source_doc_converter.docling_runtime import (
     LocalModelsUnavailableError,
     create_local_pdf_converter,
     local_pdf_converter,
     offline_environment,
     require_ready_model_directory,
 )
-from filing_doc_converter.model_management import mark_models_ready
+from source_doc_converter.model_management import mark_models_ready
 
 
 def ready_directory(tmp_path: Path) -> Path:
@@ -117,3 +117,17 @@ def test_local_converter_applies_offline_environment(monkeypatch, tmp_path: Path
         "TRANSFORMERS_OFFLINE": "1",
         "HF_DATASETS_OFFLINE": "1",
     }
+
+
+def test_docling_environment_legacy_fallback(monkeypatch) -> None:
+    monkeypatch.delenv(docling_runtime.DOCLING_CPU_ONLY_ENV, raising=False)
+    monkeypatch.setenv(docling_runtime.LEGACY_DOCLING_CPU_ONLY_ENV, "0")
+
+    assert docling_runtime._device_mode() == "auto"
+
+
+def test_docling_environment_new_name_precedence(monkeypatch) -> None:
+    monkeypatch.setenv(docling_runtime.LEGACY_DOCLING_CPU_ONLY_ENV, "0")
+    monkeypatch.setenv(docling_runtime.DOCLING_CPU_ONLY_ENV, "1")
+
+    assert docling_runtime._device_mode() == "cpu"

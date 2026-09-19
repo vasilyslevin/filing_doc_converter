@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/windows-package.yml"
       - "packaging/windows/**"
-      - "src/filing_doc_converter/**"
+      - "src/source_doc_converter/**"
       - "pyproject.toml"
       - "LICENSE"
       - "THIRD_PARTY_NOTICES.md"
@@ -63,7 +63,7 @@ jobs:
       - name: Locate Full distribution
         shell: pwsh
         run: |
-          $Distribution = Join-Path $PWD "build\windows\dist\FilingDocumentConverter"
+          $Distribution = Join-Path $PWD "build\windows\dist\SourceDocumentConverter"
           if (-not (Test-Path $Distribution -PathType Container)) {
             throw "PyInstaller distribution directory was not produced."
           }
@@ -73,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $RequiredFiles = @(
-            "FilingDocumentConverter.exe",
+            "SourceDocumentConverter.exe",
             "docling-tools.exe",
             "ocrmypdf.exe",
             "LICENSE",
@@ -100,7 +100,7 @@ jobs:
           TRANSFORMERS_OFFLINE: "1"
           DO_NOT_TRACK: "1"
         run: |
-          $GuiPath = Join-Path $env:DIST_DIR_FULL "FilingDocumentConverter.exe"
+          $GuiPath = Join-Path $env:DIST_DIR_FULL "SourceDocumentConverter.exe"
           $GuiProcess = Start-Process -FilePath $GuiPath -ArgumentList "--package-smoke-test" -Wait -PassThru
           if ($GuiProcess.ExitCode -ne 0) {
             throw "GUI package smoke test failed with exit code $($GuiProcess.ExitCode)."
@@ -166,7 +166,7 @@ jobs:
       - name: Locate Lite distribution
         shell: pwsh
         run: |
-          $Distribution = Join-Path $PWD "build\windows-lite\dist\FilingDocumentConverter"
+          $Distribution = Join-Path $PWD "build\windows-lite\dist\SourceDocumentConverter"
           if (-not (Test-Path $Distribution -PathType Container)) {
             throw "Lite PyInstaller distribution directory was not produced."
           }
@@ -176,7 +176,7 @@ jobs:
         shell: pwsh
         run: |
           $RequiredFiles = @(
-            "FilingDocumentConverter.exe",
+            "SourceDocumentConverter.exe",
             "docling-tools.exe",
             "LICENSE",
             "THIRD_PARTY_NOTICES.md",
@@ -199,17 +199,17 @@ jobs:
       - name: Create ZIP artifacts
         shell: pwsh
         run: |
-          $ZipPathFull = Join-Path $PWD "FilingDocumentConverter-Windows-x64.zip"
+          $ZipPathFull = Join-Path $PWD "SourceDocumentConverter-Windows-x64-Full.zip"
           Compress-Archive -Path $env:DIST_DIR_FULL -DestinationPath $ZipPathFull -CompressionLevel Optimal
           "PACKAGE_ZIP_FULL=$ZipPathFull" | Out-File $env:GITHUB_ENV -Append
-          $ZipPathLite = Join-Path $PWD "FilingDocumentConverter-Windows-x64-Lite.zip"
+          $ZipPathLite = Join-Path $PWD "SourceDocumentConverter-Windows-x64-Lite.zip"
           Compress-Archive -Path $env:DIST_DIR_LITE -DestinationPath $ZipPathLite -CompressionLevel Optimal
           "PACKAGE_ZIP_LITE=$ZipPathLite" | Out-File $env:GITHUB_ENV -Append
 
       - name: Upload unsigned development package (Full)
         uses: actions/upload-artifact@v4
         with:
-          name: FilingDocumentConverter-Windows-x64
+          name: SourceDocumentConverter-Windows-x64-Full
           path: ${{ env.PACKAGE_ZIP_FULL }}
           if-no-files-found: error
           retention-days: 14
@@ -217,7 +217,7 @@ jobs:
       - name: Upload unsigned development package (Lite)
         uses: actions/upload-artifact@v4
         with:
-          name: FilingDocumentConverter-Windows-x64-Lite
+          name: SourceDocumentConverter-Windows-x64-Lite
           path: ${{ env.PACKAGE_ZIP_LITE }}
           if-no-files-found: error
           retention-days: 14

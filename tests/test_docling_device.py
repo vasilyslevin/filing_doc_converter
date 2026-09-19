@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from filing_doc_converter import docling_runtime
+from source_doc_converter import docling_runtime
 
 
 def test_cpu_device_is_default(monkeypatch, tmp_path: Path) -> None:

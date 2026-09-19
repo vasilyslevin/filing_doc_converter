@@ -15,12 +15,12 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 
 $SourceRoot = Join-Path $RepositoryRoot "src"
-$GuiEntry = Join-Path $PSScriptRoot "FilingDocumentConverter.py"
+$GuiEntry = Join-Path $PSScriptRoot "SourceDocumentConverter.py"
 $ToolsEntry = Join-Path $PSScriptRoot "docling-tools.py"
-$OcrEntry = Join-Path $SourceRoot "filing_doc_converter\ocrmypdf_entry.py"
+$OcrEntry = Join-Path $SourceRoot "source_doc_converter\ocrmypdf_entry.py"
 $IconGenerator = Join-Path $PSScriptRoot "create_icon.py"
-$IconSource = Join-Path $SourceRoot "filing_doc_converter\assets\app_icon.svg"
-$IconPath = Join-Path $OutputDirectory "FilingDocumentConverter.ico"
+$IconSource = Join-Path $SourceRoot "source_doc_converter\assets\app_icon.svg"
+$IconPath = Join-Path $OutputDirectory "SourceDocumentConverter.ico"
 $TesseractBundler = Join-Path $PSScriptRoot "bundle-tesseract.ps1"
 $TorchvisionRuntimeHook = Join-Path $PSScriptRoot "pyi_rth_torchvision.py"
 $PackagingNotes = Join-Path $PSScriptRoot "PACKAGING_NOTES.txt"
@@ -81,7 +81,7 @@ $DoclingArguments = @(
 )
 $GuiArguments = $DoclingArguments + @(
     "--icon=$IconPath",
-    "--add-data=$IconSource;filing_doc_converter/assets"
+    "--add-data=$IconSource;source_doc_converter/assets"
 )
 $OcrArguments = @(
     "--collect-all=ocrmypdf",
@@ -110,21 +110,21 @@ function Invoke-PackageBuild {
 
 Push-Location $RepositoryRoot
 try {
-    Invoke-PackageBuild -Name "FilingDocumentConverter" -EntryPoint $GuiEntry -ConsoleMode "--windowed" -AdditionalArguments $GuiArguments
+    Invoke-PackageBuild -Name "SourceDocumentConverter" -EntryPoint $GuiEntry -ConsoleMode "--windowed" -AdditionalArguments $GuiArguments
     Invoke-PackageBuild -Name "docling-tools" -EntryPoint $ToolsEntry -ConsoleMode "--console" -AdditionalArguments $DoclingArguments
     if ($PackageFlavor -eq "Full") {
         Invoke-PackageBuild -Name "ocrmypdf" -EntryPoint $OcrEntry -ConsoleMode "--console" -AdditionalArguments $OcrArguments
     }
 
-    $Distribution = Join-Path $StagingDirectory "FilingDocumentConverter"
+    $Distribution = Join-Path $StagingDirectory "SourceDocumentConverter"
     $ToolsDistribution = Join-Path $StagingDirectory "docling-tools"
-    $GuiExecutable = Join-Path $Distribution "FilingDocumentConverter.exe"
+    $GuiExecutable = Join-Path $Distribution "SourceDocumentConverter.exe"
     $ToolsExecutable = Join-Path $ToolsDistribution "docling-tools.exe"
     $OcrDistribution = Join-Path $StagingDirectory "ocrmypdf"
     $OcrExecutable = Join-Path $OcrDistribution "ocrmypdf.exe"
 
     if (-not (Test-Path $GuiExecutable -PathType Leaf)) {
-        throw "FilingDocumentConverter.exe was not produced."
+        throw "SourceDocumentConverter.exe was not produced."
     }
     if (-not (Test-Path $ToolsExecutable -PathType Leaf)) {
         throw "docling-tools.exe was not produced."
@@ -171,7 +171,7 @@ try {
     }
 
     $HashTargets = @(
-        "FilingDocumentConverter.exe",
+        "SourceDocumentConverter.exe",
         "docling-tools.exe",
         "LICENSE",
         "THIRD_PARTY_NOTICES.md",

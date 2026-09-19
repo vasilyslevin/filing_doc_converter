@@ -1,9 +1,9 @@
-Filing Document Converter - unsigned development build (Lite)
+Source Document Converter - unsigned development build (Lite)
 
 This folder is not a production release. Keep the folder contents together.
 
 Executables:
-- FilingDocumentConverter.exe starts the desktop application.
+- SourceDocumentConverter.exe starts the desktop application.
 - docling-tools.exe is the companion used only for explicit model setup.
 
 OCRmyPDF and Tesseract are intentionally not bundled in the Lite package.

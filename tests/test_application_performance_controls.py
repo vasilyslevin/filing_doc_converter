@@ -2,10 +2,10 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings
 
-from filing_doc_converter import application_window
-from filing_doc_converter.application_window import ApplicationWindow
-from filing_doc_converter.model_management import ModelDirectoryState
-from filing_doc_converter.system_diagnostics import OutputAvailability
+from source_doc_converter import application_window
+from source_doc_converter.application_window import ApplicationWindow
+from source_doc_converter.model_management import ModelDirectoryState
+from source_doc_converter.system_diagnostics import OutputAvailability
 
 
 def make_settings(tmp_path: Path) -> QSettings:

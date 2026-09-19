@@ -2,8 +2,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings
 
-from filing_doc_converter import model_management
-from filing_doc_converter.model_management import (
+from source_doc_converter import model_management
+from source_doc_converter.model_management import (
     EXPECTED_MODEL_DIRECTORIES,
     MODEL_DIRECTORY_SETTING,
     downloaded_models_complete,
