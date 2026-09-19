@@ -228,6 +228,8 @@ DOCLING_ARGS=(
 "$PYTHON_BIN" "${COMMON_ARGS[@]}" \
   --collect-all=ocrmypdf \
   --collect-all=pikepdf \
+  --collect-binaries=pikepdf \
+  --hidden-import=pikepdf._core \
   --hidden-import=ocrmypdf.__main__ \
   "--workpath=$WORK_DIR/ocrmypdf" \
   --name=ocrmypdf \
