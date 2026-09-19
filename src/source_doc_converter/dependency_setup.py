@@ -11,6 +11,7 @@ from source_doc_converter.system_diagnostics import (
     ComponentStatus,
     SystemDiagnostics,
     collect_system_diagnostics,
+    installation_guidance,
 )
 
 
@@ -50,6 +51,14 @@ class DependencySetupWorker(QObject):
             diagnostics = self._diagnostics_provider()
             steps = self._steps_builder(diagnostics)
             if not steps:
+                if system() != "Windows":
+                    message = (
+                        "Guided dependency setup is only available on Windows.\n\n"
+                        f"{installation_guidance('ocrmypdf', system())}"
+                    )
+                    self.status_changed.emit("Manual setup required")
+                    self.failed.emit(message)
+                    return
                 self.status_changed.emit("Ready")
                 self.completed.emit()
                 return

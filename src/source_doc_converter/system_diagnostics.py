@@ -123,6 +123,7 @@ def _python_package_available(package: str) -> bool:
 def check_output_availability() -> OutputAvailability:
     docling_installed = _python_package_available("docling")
     models_ready = load_model_directory().ready if docling_installed else False
+    ghostscript_ready = _resolve_ghostscript_executable() is not None
     reason = None
     if not docling_installed:
         reason = "Docling is not installed. Open Help > System Check for setup guidance."
@@ -130,7 +131,8 @@ def check_output_availability() -> OutputAvailability:
         reason = "Local Docling models are not ready. Open Help > System Check and download models."
     return OutputAvailability(
         searchable_pdf=resolve_ocrmypdf_executable() is not None
-        and resolve_tesseract_executable()[0] is not None,
+        and resolve_tesseract_executable()[0] is not None
+        and ghostscript_ready,
         docling=docling_installed and models_ready,
         docling_reason=reason,
     )
@@ -220,20 +222,33 @@ def _ghostscript_executable_candidates() -> tuple[str, ...]:
     return ("gs",)
 
 
-def check_ghostscript() -> ComponentStatus:
-    executable = None
+def _resolve_ghostscript_executable() -> tuple[str, str] | None:
     for candidate in _ghostscript_executable_candidates():
         resolved = find_executable(candidate, extra_directories=macos_finder_search_paths())
         if resolved:
-            executable = resolved
-            break
-    if executable is None:
+            if platform.system() != "Darwin":
+                return resolved, "path"
+            executable = str(resolved)
+            for prefix in macos_finder_search_paths():
+                prefix_text = str(prefix)
+                if executable == prefix_text or executable.startswith(f"{prefix_text}/"):
+                    return resolved, "homebrew"
+            return resolved, "path"
+    return None
+
+
+def check_ghostscript() -> ComponentStatus:
+    resolved = _resolve_ghostscript_executable()
+    if resolved is None:
         return ComponentStatus("ghostscript", "Ghostscript", False, error="Executable not found")
+    executable, source = resolved
 
     succeeded, output, error = _run_command([executable, "--version"])
     details = ()
     if platform.system() == "Darwin":
-        details = (f"Executable: {executable}",)
+        details = (
+            "Source: Homebrew fallback" if source == "homebrew" else "Source: System PATH",
+        )
     return ComponentStatus(
         "ghostscript",
         "Ghostscript",

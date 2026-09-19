@@ -7,7 +7,7 @@ from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QGuiApplication, QImage, QPainter
 from PySide6.QtSvg import QSvgRenderer
 
-ICONSET_SIZES = (16, 32, 64, 128, 256, 512, 1024)
+ICONSET_SIZES = (16, 32, 128, 256, 512)
 
 
 def _render_png(svg_path: Path, destination: Path, size: int) -> None:

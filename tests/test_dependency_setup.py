@@ -13,7 +13,7 @@ def diagnostics(missing: tuple[str, ...]) -> SystemDiagnostics:
         pyside_version="6.9",
         components=tuple(
             ComponentStatus(key, key, key not in missing)
-            for key in ("ocrmypdf", "tesseract", "docling")
+            for key in ("ocrmypdf", "tesseract", "ghostscript", "docling")
         ),
     )
 
@@ -122,3 +122,24 @@ def test_default_steps_do_not_install_on_macos(monkeypatch) -> None:
     steps = dependency_setup._default_steps(diagnostics(("ocrmypdf", "tesseract", "ghostscript")))
 
     assert steps == []
+
+
+def test_dependency_setup_reports_manual_setup_on_non_windows(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(dependency_setup, "system", lambda: "Darwin")
+    worker = DependencySetupWorker(
+        diagnostics_provider=lambda: diagnostics(("ocrmypdf", "tesseract", "ghostscript")),
+        steps_builder=lambda _: [],
+    )
+    failures = []
+    completed = []
+    statuses = []
+    worker.failed.connect(failures.append)
+    worker.completed.connect(lambda: completed.append(True))
+    worker.status_changed.connect(statuses.append)
+
+    worker.run()
+
+    assert not completed
+    assert failures
+    assert "Homebrew" in failures[0]
+    assert statuses[-1] == "Manual setup required"

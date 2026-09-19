@@ -1,1 +1,15 @@
+docling==2.128.0
+transformers==4.51.3
+torch==2.14.0
+torchvision==0.29.0
+PySide6==6.11.2
+PySide6-Addons==6.11.2
+PySide6-Essentials==6.11.2
+shiboken6==6.11.2
+ocrmypdf==17.12.1
+rapidocr==3.9.2
+onnxruntime==1.23.2
+numpy==2.3.3
+Pillow==12.3.0
 pyinstaller==6.16.0
+pyinstaller-hooks-contrib==2026.7

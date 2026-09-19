@@ -88,6 +88,7 @@ def test_diagnostics_update_output_availability(qtbot) -> None:
         components=(
             ComponentStatus("ocrmypdf", "OCRmyPDF", True),
             ComponentStatus("tesseract", "Tesseract OCR", True),
+            ComponentStatus("ghostscript", "Ghostscript", True),
             ComponentStatus("docling", "Docling", True),
         ),
     )
@@ -115,6 +116,7 @@ def test_missing_models_disable_only_docling_outputs(qtbot) -> None:
         components=(
             ComponentStatus("ocrmypdf", "OCRmyPDF", True),
             ComponentStatus("tesseract", "Tesseract OCR", True),
+            ComponentStatus("ghostscript", "Ghostscript", True),
             ComponentStatus("docling", "Docling", True),
         ),
     )
@@ -125,6 +127,33 @@ def test_missing_models_disable_only_docling_outputs(qtbot) -> None:
     assert not window.markdown_checkbox.isEnabled()
     assert not window.json_checkbox.isEnabled()
     assert "models are not ready" in window.markdown_checkbox.toolTip()
+
+
+def test_missing_ghostscript_disables_searchable_pdf(qtbot) -> None:
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        model_state_provider=ready_models,
+    )
+    qtbot.addWidget(window)
+    diagnostics = SystemDiagnostics(
+        application_version="0.1.0a0",
+        operating_system="TestOS",
+        operating_system_version="1",
+        architecture="test",
+        python_version="3.12",
+        pyside_version="6.9",
+        components=(
+            ComponentStatus("ocrmypdf", "OCRmyPDF", True),
+            ComponentStatus("tesseract", "Tesseract OCR", True),
+            ComponentStatus("ghostscript", "Ghostscript", False),
+            ComponentStatus("docling", "Docling", True),
+        ),
+    )
+
+    window.apply_diagnostics(diagnostics)
+
+    assert not window.searchable_pdf_checkbox.isEnabled()
+    assert "Ghostscript" in window.searchable_pdf_checkbox.toolTip()
 
 
 def test_open_output_folder_uses_desktop_services(monkeypatch, qtbot, tmp_path: Path) -> None:

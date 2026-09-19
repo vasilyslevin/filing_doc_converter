@@ -113,7 +113,17 @@ def _candidate_system_executables() -> tuple[tuple[str, Path], ...]:
     candidates: list[tuple[str, Path]] = []
     path_exec = find_executable("tesseract", extra_directories=macos_finder_search_paths())
     if path_exec:
-        candidates.append(("path", Path(path_exec)))
+        source = "path"
+        if platform.system() == "Darwin":
+            resolved_path = Path(path_exec).resolve(strict=False)
+            for prefix in macos_finder_search_paths():
+                try:
+                    resolved_path.relative_to(prefix.resolve(strict=False))
+                    source = "homebrew"
+                    break
+                except ValueError:
+                    continue
+        candidates.append((source, Path(path_exec)))
     if platform.system() == "Darwin":
         for prefix in macos_finder_search_paths():
             candidates.append(("homebrew", prefix / "tesseract"))

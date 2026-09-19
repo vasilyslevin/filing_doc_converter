@@ -156,3 +156,20 @@ def test_ghostscript_missing_executable(monkeypatch) -> None:
 
     assert not result.available
     assert result.error == "Executable not found"
+
+
+def test_ghostscript_diagnostics_on_macos_uses_source_label(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(system_diagnostics, "macos_finder_search_paths", lambda: ("/opt/homebrew/bin",))
+    monkeypatch.setattr(
+        system_diagnostics,
+        "find_executable",
+        lambda *args, **kwargs: "/opt/homebrew/bin/gs",
+    )
+    monkeypatch.setattr(system_diagnostics, "_run_command", lambda command: (True, "10.0.0\n", None))
+
+    result = check_ghostscript()
+
+    assert result.available
+    assert result.details == ("Source: Homebrew fallback",)
+    assert "/opt/homebrew/bin/gs" not in "\n".join(result.details)

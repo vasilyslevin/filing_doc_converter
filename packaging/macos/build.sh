@@ -18,6 +18,7 @@ GUI_ENTRY="$SCRIPT_DIR/SourceDocumentConverter.py"
 TOOLS_ENTRY="$SCRIPT_DIR/docling-tools.py"
 OCR_ENTRY="$REPO_ROOT/src/source_doc_converter/ocrmypdf_entry.py"
 PACKAGE_NOTES="$SCRIPT_DIR/PACKAGING_NOTES.txt"
+PYPROJECT_PATH="$REPO_ROOT/pyproject.toml"
 
 case "$ARCH" in
   arm64|x86_64) ;;
@@ -28,6 +29,8 @@ esac
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$DIST_DIR" "$WORK_DIR" "$SPEC_DIR"
+
+PROJECT_VERSION="$("$PYTHON_BIN" -c 'import os, pathlib, tomllib; print(tomllib.loads(pathlib.Path(os.environ["PYPROJECT_PATH"]).read_text(encoding="utf-8"))["project"]["version"])')"
 
 "$PYTHON_BIN" "$SCRIPT_DIR/create_icns.py" "$ICON_SOURCE" "$ICON_PATH"
 
@@ -104,6 +107,8 @@ set_or_add_plist() {
 set_or_add_plist "CFBundleDisplayName" "string" "Source Document Converter"
 set_or_add_plist "CFBundleName" "string" "Source Document Converter"
 set_or_add_plist "CFBundleExecutable" "string" "$EXECUTABLE_NAME"
+set_or_add_plist "CFBundleShortVersionString" "string" "$PROJECT_VERSION"
+set_or_add_plist "CFBundleVersion" "string" "$PROJECT_VERSION"
 set_or_add_plist "LSMinimumSystemVersion" "string" "$MIN_MACOS_VERSION"
 /usr/libexec/PlistBuddy -c "Delete :LSArchitecturePriority" "$PLIST" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :LSArchitecturePriority array" "$PLIST"
@@ -121,9 +126,14 @@ codesign --verify --deep --strict "$APP_DIR"
 
 if command -v hdiutil >/dev/null 2>&1; then
   DMG_NAME="SourceDocumentConverter-macOS-$ARCH.dmg"
+  DMG_STAGE_DIR="$(mktemp -d "$DIST_DIR/dmg-stage.XXXXXX")"
+  trap 'rm -rf "$DMG_STAGE_DIR"' EXIT
+  ditto "$APP_DIR" "$DMG_STAGE_DIR/$APP_NAME"
   hdiutil create -volname "Source Document Converter ($ARCH)" \
-    -srcfolder "$APP_DIR" \
+    -srcfolder "$DMG_STAGE_DIR" \
     -ov -format UDZO "$DIST_DIR/$DMG_NAME"
+  rm -rf "$DMG_STAGE_DIR"
+  trap - EXIT
   shasum -a 256 "$DIST_DIR/$DMG_NAME" > "$DIST_DIR/$DMG_NAME.sha256"
 fi
 
