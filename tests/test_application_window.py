@@ -156,6 +156,23 @@ def test_missing_ghostscript_disables_searchable_pdf(qtbot) -> None:
     assert "Ghostscript" in window.searchable_pdf_checkbox.toolTip()
 
 
+def test_missing_pypdf_disables_fast_markdown_option(monkeypatch, qtbot) -> None:
+    monkeypatch.setattr(
+        application_window,
+        "check_pypdf",
+        lambda: ComponentStatus("pypdf", "pypdf", False, error="Package not installed"),
+    )
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+    )
+    qtbot.addWidget(window)
+
+    fast_index = window.ai_analysis_mode_combo.findData("fast")
+    fast_item = window.ai_analysis_mode_combo.model().item(fast_index)
+    assert fast_item is not None
+    assert not fast_item.isEnabled()
+
+
 def test_open_output_folder_uses_desktop_services(monkeypatch, qtbot, tmp_path: Path) -> None:
     window = ApplicationWindow(
         availability_provider=lambda: OutputAvailability(True, True)

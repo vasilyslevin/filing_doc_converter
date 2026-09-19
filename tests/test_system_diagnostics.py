@@ -102,6 +102,15 @@ def test_missing_docling_package(monkeypatch) -> None:
     assert result.error == "Package not installed"
 
 
+def test_missing_pypdf_package(monkeypatch) -> None:
+    monkeypatch.setattr(system_diagnostics.importlib_util, "find_spec", lambda name: None)
+
+    result = system_diagnostics.check_pypdf()
+
+    assert not result.available
+    assert result.error == "Package not installed"
+
+
 def test_docling_version_without_importing_models(monkeypatch) -> None:
     monkeypatch.setattr(
         system_diagnostics.importlib_util,
@@ -147,6 +156,7 @@ def test_platform_specific_guidance() -> None:
     assert "ghostscript" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin").lower()
     assert "packaged app" in system_diagnostics.installation_guidance("tesseract", "Windows")
     assert "package manager" in system_diagnostics.installation_guidance("ocrmypdf", "Linux")
+    assert "pypdf" in system_diagnostics.installation_guidance("pypdf", "Linux")
 
 
 def test_ghostscript_missing_executable(monkeypatch) -> None:

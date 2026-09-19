@@ -23,6 +23,9 @@ def test_package_smoke_test_checks_window_and_companion(monkeypatch) -> None:
         "resolve_model_downloader",
         lambda: events.append("companion") or "docling-tools.exe",
     )
+    pypdf_module = ModuleType("pypdf")
+    pypdf_module.PdfReader = type("FakePdfReader", (), {})
+    monkeypatch.setitem(sys.modules, "pypdf", pypdf_module)
 
     assert application_entry.run_package_smoke_test() == 0
     assert events == ["window", "closed", "companion"]

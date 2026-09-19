@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from source_doc_converter import runtime_paths
@@ -6,18 +7,19 @@ from source_doc_converter import runtime_paths
 def test_macos_finder_search_paths_are_known_prefixes() -> None:
     paths = runtime_paths.macos_finder_search_paths(system="Darwin")
 
-    assert tuple(str(path) for path in paths) == runtime_paths.MACOS_FINDER_PATHS
+    assert tuple(path.as_posix() for path in paths) == runtime_paths.MACOS_FINDER_PATHS
 
 
 def test_build_subprocess_path_dedupes_entries(tmp_path: Path) -> None:
     executable_directory = tmp_path / "app"
+    existing_path = os.pathsep.join((str(executable_directory), str(tmp_path / "bin")))
     path = runtime_paths.build_subprocess_path(
         include_app_directory=executable_directory,
-        environ={"PATH": f"{executable_directory}:{tmp_path / 'bin'}"},
+        environ={"PATH": existing_path},
         system="Linux",
     )
 
-    assert path.split(":")[0] == str(executable_directory)
+    assert path.split(os.pathsep)[0] == str(executable_directory)
     assert path.count(str(executable_directory)) == 1
 
 

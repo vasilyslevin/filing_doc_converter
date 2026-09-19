@@ -14,13 +14,17 @@ def test_runtime_check_resolves_auto_image_processor(monkeypatch, capsys) -> Non
     docling_module = ModuleType("docling")
     converter_module = ModuleType("docling.document_converter")
     converter_module.DocumentConverter = FakeDocumentConverter
+    pypdf_module = ModuleType("pypdf")
+    pypdf_module.PdfReader = type("FakePdfReader", (), {})
     transformers_module = ModuleType("transformers")
     transformers_module.AutoImageProcessor = FakeAutoImageProcessor
     monkeypatch.setitem(sys.modules, "docling", docling_module)
     monkeypatch.setitem(sys.modules, "docling.document_converter", converter_module)
+    monkeypatch.setitem(sys.modules, "pypdf", pypdf_module)
     monkeypatch.setitem(sys.modules, "transformers", transformers_module)
 
     assert docling_tools_entry.run_runtime_check() == 0
     output = capsys.readouterr().out
     assert "AutoImageProcessor: FakeAutoImageProcessor" in output
     assert "DocumentConverter: FakeDocumentConverter" in output
+    assert "PdfReader: FakePdfReader" in output

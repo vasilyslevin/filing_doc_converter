@@ -278,10 +278,16 @@ def check_docling() -> ComponentStatus:
     return check_python_package("docling", "Docling")
 
 
+def check_pypdf() -> ComponentStatus:
+    return check_python_package("pypdf", "pypdf")
+
+
 def installation_guidance(component: str, operating_system: str | None = None) -> str:
     system = operating_system or platform.system()
     if component == "docling":
         return 'Install the Docling extra: python -m pip install ".[docling]"'
+    if component == "pypdf":
+        return "Install pypdf: python -m pip install pypdf"
     if component == "ghostscript":
         if system == "Darwin":
             return "Install Ghostscript with Homebrew: brew install ghostscript"
@@ -306,5 +312,11 @@ def collect_system_diagnostics() -> SystemDiagnostics:
         architecture=platform.machine(),
         python_version=platform.python_version(),
         pyside_version=PYSIDE_VERSION,
-        components=(check_ocrmypdf(), check_tesseract(), check_ghostscript(), check_docling()),
+        components=(
+            check_ocrmypdf(),
+            check_tesseract(),
+            check_ghostscript(),
+            check_pypdf(),
+            check_docling(),
+        ),
     )

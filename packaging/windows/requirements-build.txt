@@ -2,3 +2,4 @@
 .[full,dev]
 pyinstaller>=6.11,<7
 pyinstaller-hooks-contrib>=2025.8,<2027
+pypdf>=5,<6

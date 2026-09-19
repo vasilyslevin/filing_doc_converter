@@ -71,6 +71,7 @@ $DoclingArguments = @(
     "--collect-all=docling",
     "--collect-all=docling_core",
     "--collect-all=docling_parse",
+    "--collect-all=pypdf",
     "--collect-all=rapidocr",
     "--collect-all=transformers",
     "--collect-binaries=torchvision",

@@ -109,6 +109,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Docling tools help failed with exit code $LASTEXITCODE."
           }
+          & (Join-Path $env:DIST_DIR_FULL "docling-tools.exe") --runtime-check
+          if ($LASTEXITCODE -ne 0) {
+            throw "Docling runtime check failed with exit code $LASTEXITCODE."
+          }
           & (Join-Path $env:DIST_DIR_FULL "docling-tools.exe") models download --help
           if ($LASTEXITCODE -ne 0) {
             throw "Docling model-download help failed with exit code $LASTEXITCODE."

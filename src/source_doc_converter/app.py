@@ -37,9 +37,12 @@ def _prepare_frozen_multiprocessing() -> None:
 
 
 def run_package_smoke_test() -> int:
+    from pypdf import PdfReader
+
     window = ApplicationWindow()
     window.close()
     resolve_model_downloader()
+    _ = PdfReader
     return 0
 
 

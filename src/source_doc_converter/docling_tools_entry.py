@@ -5,10 +5,12 @@ RUNTIME_CHECK_FLAG = "--runtime-check"
 
 def run_runtime_check() -> int:
     from docling.document_converter import DocumentConverter
+    from pypdf import PdfReader
     from transformers import AutoImageProcessor
 
     print(f"AutoImageProcessor: {AutoImageProcessor.__name__}")
     print(f"DocumentConverter: {DocumentConverter.__name__}")
+    print(f"PdfReader: {PdfReader.__name__}")
     return 0
 
 
