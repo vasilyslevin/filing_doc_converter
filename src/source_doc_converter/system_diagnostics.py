@@ -8,10 +8,11 @@ from dataclasses import dataclass
 from PySide6 import __version__ as PYSIDE_VERSION
 
 from source_doc_converter import __version__
-from source_doc_converter.model_management import is_packaged_application, load_model_directory
+from source_doc_converter.model_management import load_model_directory
 from source_doc_converter.ocr_runtime import (
     build_ocr_environment,
     discover_tesseract_installations,
+    resolve_ghostscript_executable,
     resolve_ocrmypdf_executable,
     resolve_tesseract_executable,
     resolve_tesseract_profile,
@@ -123,7 +124,7 @@ def _python_package_available(package: str) -> bool:
 def check_output_availability() -> OutputAvailability:
     docling_installed = _python_package_available("docling")
     models_ready = load_model_directory().ready if docling_installed else False
-    ghostscript_ready = _resolve_ghostscript_executable() is not None
+    ghostscript_ready = resolve_ghostscript_executable() is not None
     reason = None
     if not docling_installed:
         reason = "Docling is not installed. Open Help > System Check for setup guidance."
@@ -144,11 +145,21 @@ def check_ocrmypdf() -> ComponentStatus:
         return ComponentStatus("ocrmypdf", "OCRmyPDF", False, error="Executable not found")
 
     succeeded, output, error = _run_command([executable, "--version"])
+    details = ("Required for searchable PDF output.",)
+    if platform.system() == "Darwin":
+        prefixes = tuple(str(path) for path in macos_finder_search_paths())
+        if any(executable.startswith(f"{prefix}/") or executable == prefix for prefix in prefixes):
+            details += ("Source: Homebrew",)
+        else:
+            details += ("Source: PATH/manual selection",)
+    elif platform.system() == "Windows":
+        details += ("Source: PATH/winget/manual selection",)
     return ComponentStatus(
         "ocrmypdf",
         "OCRmyPDF",
         succeeded,
         version=_first_line(output),
+        details=details,
         error=error,
     )
 
@@ -158,19 +169,12 @@ def check_tesseract() -> ComponentStatus:
     profile = resolve_tesseract_profile(installations=installations)
     executable, source = resolve_tesseract_executable()
     if executable is None:
-        packaged_windows = is_packaged_application() and platform.system() == "Windows"
-        missing_error = (
-            "Bundled runtime not found in tools/tesseract"
-            if packaged_windows
-            else "Executable not found"
-        )
-        details = ("Source: bundled",) if packaged_windows else ()
         return ComponentStatus(
             "tesseract",
             "Tesseract OCR",
             False,
-            details=details,
-            error=missing_error,
+            details=("Required for searchable PDF output.",),
+            error="Executable not found",
         )
 
     succeeded, output, error = _run_command(
@@ -197,8 +201,7 @@ def check_tesseract() -> ComponentStatus:
         languages = tuple(lines[1:] if lines and "available languages" in lines[0].lower() else lines)
 
     details_list = [f"Source: {source}"]
-    if source == "bundled":
-        details_list.append("Bundled tessdata: tools/tesseract/tessdata")
+    details_list.insert(0, "Required for searchable PDF output.")
     if installations:
         details_list.append(f"Validated installs: {len(installations)}")
         details_list.append(
@@ -216,39 +219,23 @@ def check_tesseract() -> ComponentStatus:
     )
 
 
-def _ghostscript_executable_candidates() -> tuple[str, ...]:
-    if platform.system() == "Windows":
-        return ("gswin64c", "gswin32c", "gs")
-    return ("gs",)
-
-
-def _resolve_ghostscript_executable() -> tuple[str, str] | None:
-    for candidate in _ghostscript_executable_candidates():
-        resolved = find_executable(candidate, extra_directories=macos_finder_search_paths())
-        if resolved:
-            if platform.system() != "Darwin":
-                return resolved, "path"
-            executable = str(resolved)
-            for prefix in macos_finder_search_paths():
-                prefix_text = str(prefix)
-                if executable == prefix_text or executable.startswith(f"{prefix_text}/"):
-                    return resolved, "homebrew"
-            return resolved, "path"
-    return None
-
-
 def check_ghostscript() -> ComponentStatus:
-    resolved = _resolve_ghostscript_executable()
-    if resolved is None:
+    executable = resolve_ghostscript_executable()
+    if executable is None:
         return ComponentStatus("ghostscript", "Ghostscript", False, error="Executable not found")
-    executable, source = resolved
 
     succeeded, output, error = _run_command([executable, "--version"])
-    details = ()
+    details = ("Required for searchable PDF output.",)
     if platform.system() == "Darwin":
-        details = (
-            "Source: Homebrew fallback" if source == "homebrew" else "Source: System PATH",
-        )
+        if any(
+            executable == str(prefix) or executable.startswith(f"{prefix!s}/")
+            for prefix in macos_finder_search_paths()
+        ):
+            details += ("Source: Homebrew",)
+        else:
+            details += ("Source: PATH/manual selection",)
+    elif platform.system() == "Windows":
+        details += ("Source: PATH/winget/manual selection",)
     return ComponentStatus(
         "ghostscript",
         "Ghostscript",
@@ -282,6 +269,29 @@ def check_pypdf() -> ComponentStatus:
     return check_python_package("pypdf", "pypdf")
 
 
+def check_homebrew() -> ComponentStatus:
+    if platform.system() != "Darwin":
+        return ComponentStatus("homebrew", "Homebrew", True, details=("Not required on this platform.",))
+    executable = find_executable("brew", extra_directories=macos_finder_search_paths())
+    if executable is None:
+        return ComponentStatus(
+            "homebrew",
+            "Homebrew",
+            False,
+            details=("Required for guided OCR tool installation.",),
+            error="Executable not found",
+        )
+    succeeded, output, error = _run_command([executable, "--version"])
+    return ComponentStatus(
+        "homebrew",
+        "Homebrew",
+        succeeded,
+        version=_first_line(output),
+        details=("Required for guided OCR tool installation.",),
+        error=error,
+    )
+
+
 def installation_guidance(component: str, operating_system: str | None = None) -> str:
     system = operating_system or platform.system()
     if component == "docling":
@@ -292,19 +302,30 @@ def installation_guidance(component: str, operating_system: str | None = None) -
         if system == "Darwin":
             return "Install Ghostscript with Homebrew: brew install ghostscript"
         if system == "Windows":
-            return "Install Ghostscript and ensure gswin64c is available on PATH."
+            return "Install Ghostscript with winget: winget install -e --id ArtifexSoftware.GhostScript"
         return "Install Ghostscript using your Linux distribution package manager."
+    if component == "homebrew" and system == "Darwin":
+        return "Install Homebrew first: https://brew.sh/"
     if system == "Darwin":
         return "Install OCR tools with Homebrew: brew install ocrmypdf tesseract ghostscript"
     if system == "Windows":
-        return (
-            "If using the packaged app, reinstall it if bundled OCR tools are missing. "
-            "For source installs, install OCRmyPDF and Tesseract and ensure executables are on PATH."
-        )
+        return "Install OCR tools with winget: winget install -e --id OCRmyPDF.OCRmyPDF UB-Mannheim.TesseractOCR ArtifexSoftware.GhostScript"
     return "Install OCRmyPDF and Tesseract using your Linux distribution package manager."
 
 
 def collect_system_diagnostics() -> SystemDiagnostics:
+    base_components = (
+        check_ocrmypdf(),
+        check_tesseract(),
+        check_ghostscript(),
+        check_pypdf(),
+        check_docling(),
+    )
+    components = (
+        (check_homebrew(),) + base_components
+        if platform.system() == "Darwin"
+        else base_components
+    )
     return SystemDiagnostics(
         application_version=__version__,
         operating_system=platform.system(),
@@ -312,11 +333,5 @@ def collect_system_diagnostics() -> SystemDiagnostics:
         architecture=platform.machine(),
         python_version=platform.python_version(),
         pyside_version=PYSIDE_VERSION,
-        components=(
-            check_ocrmypdf(),
-            check_tesseract(),
-            check_ghostscript(),
-            check_pypdf(),
-            check_docling(),
-        ),
+        components=components,
     )

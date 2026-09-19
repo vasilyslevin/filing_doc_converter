@@ -5,6 +5,7 @@ from PySide6.QtCore import QSettings
 
 from source_doc_converter import ocr_runtime
 from source_doc_converter.ocr_runtime import (
+    OCRMYPDF_PATH_SETTING,
     TESSERACT_PROFILE_MODE_SETTING,
     TESSERACT_PROFILE_PATH_SETTING,
     TesseractInstallation,
@@ -107,32 +108,31 @@ def test_resolve_profile_prefers_explicit_system_selection(tmp_path: Path) -> No
     assert profile.installation.source == "path"
 
 
-def test_resolve_profile_automatic_prefers_bundled_then_system(tmp_path: Path) -> None:
+def test_resolve_profile_automatic_selects_first_valid_installation(tmp_path: Path) -> None:
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
-    bundled = _installation("Bundled", "bundled", tmp_path / "bundle")
-    system = _installation("System", "path", tmp_path / "system", exe_name="tesseract")
+    first = _installation("System", "path", tmp_path / "first", exe_name="tesseract")
+    second = _installation("System 2", "path", tmp_path / "second", exe_name="tesseract")
 
-    profile = ocr_runtime.resolve_tesseract_profile(settings, installations=(bundled, system))
+    profile = ocr_runtime.resolve_tesseract_profile(settings, installations=(first, second))
     assert profile is not None
-    assert profile.installation.source == "bundled"
+    assert profile.installation.executable == first.executable
 
-    profile_without_bundle = ocr_runtime.resolve_tesseract_profile(settings, installations=(system,))
-    assert profile_without_bundle is not None
-    assert profile_without_bundle.installation.source == "path"
+    profile_single = ocr_runtime.resolve_tesseract_profile(settings, installations=(second,))
+    assert profile_single is not None
+    assert profile_single.installation.executable == second.executable
 
 
-def test_resolve_ocrmypdf_prefers_packaged_companion(monkeypatch, tmp_path: Path) -> None:
-    package_directory = tmp_path / "package"
-    companion = package_directory / "ocrmypdf.exe"
-    companion.parent.mkdir(parents=True, exist_ok=True)
-    companion.touch()
-    monkeypatch.setattr(ocr_runtime, "is_packaged_application", lambda: True)
-    monkeypatch.setattr(ocr_runtime.sys, "executable", str(package_directory / "app.exe"))
-    monkeypatch.setattr(ocr_runtime, "find_executable", lambda name, **kwargs: str(tmp_path / "system" / "ocrmypdf"))
+def test_resolve_ocrmypdf_prefers_manual_setting(monkeypatch, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    manual = tmp_path / "manual" / "ocrmypdf"
+    manual.parent.mkdir(parents=True, exist_ok=True)
+    manual.touch()
+    settings.setValue(OCRMYPDF_PATH_SETTING, str(manual))
+    monkeypatch.setattr(ocr_runtime, "find_executable", lambda name, **kwargs: None)
 
-    executable = ocr_runtime.resolve_ocrmypdf_executable()
+    executable = ocr_runtime.resolve_ocrmypdf_executable(settings)
 
-    assert executable == str(companion)
+    assert executable == str(manual.resolve())
 
 
 def test_resolve_ocrmypdf_uses_macos_finder_paths_when_path_missing(monkeypatch, tmp_path: Path) -> None:

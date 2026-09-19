@@ -251,11 +251,9 @@ GitHub Actions for `source_doc_converter` runs both commands on Ubuntu, Windows,
 
 ## Packaging direction
 
-The Windows packaging workflow now bundles a pinned UB-Mannheim Tesseract runtime (including `eng` and `osd` language data) and verifies it during build and smoke test. See `packaging/windows/TESSERACT_BUNDLING.md` for source pinning, checksum refresh, and local verification steps.
+The Windows packaging workflow now builds one standard package artifact (`SourceDocumentConverter-Windows-x64`) that bundles the app runtime and Docling tools, while keeping OCRmyPDF, Tesseract OCR, and Ghostscript external.
 
-The workflow also builds a **Lite** Windows package that excludes OCRmyPDF and bundled Tesseract. The Lite package relies on guided dependency setup from **Help > System Check**.
-
-Before publishing a release, manually run the **Windows development package** workflow and confirm both Full and Lite packaging jobs succeed for the release tag.
+Before publishing a release, manually run the **Windows development package** workflow for the release tag and confirm the package succeeds.
 
 ## Privacy and security
 

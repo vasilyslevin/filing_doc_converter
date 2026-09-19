@@ -16,7 +16,6 @@ ICON_PATH="$OUTPUT_DIR/SourceDocumentConverter.icns"
 ICON_SOURCE="$REPO_ROOT/src/source_doc_converter/assets/app_icon.svg"
 GUI_ENTRY="$SCRIPT_DIR/SourceDocumentConverter.py"
 TOOLS_ENTRY="$SCRIPT_DIR/docling-tools.py"
-OCR_ENTRY="$REPO_ROOT/src/source_doc_converter/ocrmypdf_entry.py"
 PACKAGE_NOTES="$SCRIPT_DIR/PACKAGING_NOTES.txt"
 PYPROJECT_PATH="$REPO_ROOT/pyproject.toml"
 TORCHVISION_RUNTIME_HOOK="$REPO_ROOT/packaging/windows/pyi_rth_torchvision.py"
@@ -225,17 +224,6 @@ DOCLING_ARGS=(
   --console \
   "$TOOLS_ENTRY"
 
-"$PYTHON_BIN" "${COMMON_ARGS[@]}" \
-  --collect-all=ocrmypdf \
-  --collect-all=pikepdf \
-  --collect-binaries=pikepdf \
-  --hidden-import=pikepdf._core \
-  --hidden-import=ocrmypdf.__main__ \
-  "--workpath=$WORK_DIR/ocrmypdf" \
-  --name=ocrmypdf \
-  --console \
-  "$OCR_ENTRY"
-
 APP_DIR="$DIST_DIR/$EXECUTABLE_NAME.app"
 if [[ ! -d "$APP_DIR" ]]; then
   echo "PyInstaller did not produce $EXECUTABLE_NAME.app" >&2
@@ -282,8 +270,7 @@ copy_companion_runtime() {
 }
 
 copy_companion_runtime "docling-tools"
-copy_companion_runtime "ocrmypdf"
-rm -rf "$DIST_DIR/docling-tools" "$DIST_DIR/ocrmypdf"
+rm -rf "$DIST_DIR/docling-tools"
 
 PACKAGED_TORCHVISION_EXTENSIONS=()
 while IFS= read -r -d '' EXTENSION; do

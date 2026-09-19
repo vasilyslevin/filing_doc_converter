@@ -116,15 +116,16 @@ def test_dependency_setup_failure_preserves_full_details(monkeypatch, qtbot) -> 
     assert "line two" in failures[0]
 
 
-def test_default_steps_do_not_install_on_macos(monkeypatch) -> None:
+def test_default_steps_on_macos_require_homebrew(monkeypatch) -> None:
     monkeypatch.setattr(dependency_setup, "system", lambda: "Darwin")
+    monkeypatch.setattr(dependency_setup.shutil, "which", lambda _: None)
 
     steps = dependency_setup._default_steps(diagnostics(("ocrmypdf", "tesseract", "ghostscript")))
 
     assert steps == []
 
 
-def test_dependency_setup_reports_manual_setup_on_non_windows(monkeypatch, qtbot) -> None:
+def test_dependency_setup_reports_manual_setup_when_no_guided_installer(monkeypatch, qtbot) -> None:
     monkeypatch.setattr(dependency_setup, "system", lambda: "Darwin")
     worker = DependencySetupWorker(
         diagnostics_provider=lambda: diagnostics(("ocrmypdf", "tesseract", "ghostscript")),

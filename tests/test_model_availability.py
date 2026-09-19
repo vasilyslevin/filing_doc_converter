@@ -23,8 +23,8 @@ def test_docling_output_requires_installed_local_models(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         system_diagnostics,
-        "_resolve_ghostscript_executable",
-        lambda: ("/tools/gs", "path"),
+        "resolve_ghostscript_executable",
+        lambda: "/tools/gs",
     )
 
     availability = system_diagnostics.check_output_availability()
@@ -54,8 +54,8 @@ def test_docling_output_is_available_when_package_and_models_are_ready(monkeypat
     )
     monkeypatch.setattr(
         system_diagnostics,
-        "_resolve_ghostscript_executable",
-        lambda: ("/tools/gs", "path"),
+        "resolve_ghostscript_executable",
+        lambda: "/tools/gs",
     )
 
     availability = system_diagnostics.check_output_availability()
@@ -82,7 +82,7 @@ def test_searchable_pdf_requires_ghostscript(monkeypatch) -> None:
         "resolve_tesseract_executable",
         lambda: ("/tools/tesseract", "system"),
     )
-    monkeypatch.setattr(system_diagnostics, "_resolve_ghostscript_executable", lambda: None)
+    monkeypatch.setattr(system_diagnostics, "resolve_ghostscript_executable", lambda: None)
 
     availability = system_diagnostics.check_output_availability()
 

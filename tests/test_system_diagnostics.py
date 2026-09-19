@@ -77,20 +77,22 @@ def test_tesseract_languages(monkeypatch) -> None:
 
     assert result.available
     assert result.version == "tesseract 5.5.1"
-    assert result.details == ("Source: system", "Languages: eng, spa")
+    assert result.details == (
+        "Required for searchable PDF output.",
+        "Source: system",
+        "Languages: eng, spa",
+    )
 
 
-def test_packaged_missing_tesseract_bundle_has_specific_error(monkeypatch) -> None:
+def test_missing_tesseract_has_clear_error(monkeypatch) -> None:
     monkeypatch.setattr(system_diagnostics, "discover_tesseract_installations", lambda: ())
     monkeypatch.setattr(system_diagnostics, "resolve_tesseract_executable", lambda: (None, "missing"))
-    monkeypatch.setattr(system_diagnostics, "is_packaged_application", lambda: True)
-    monkeypatch.setattr(system_diagnostics.platform, "system", lambda: "Windows")
 
     result = check_tesseract()
 
     assert not result.available
-    assert result.details == ("Source: bundled",)
-    assert "Bundled runtime not found" in (result.error or "")
+    assert result.details == ("Required for searchable PDF output.",)
+    assert result.error == "Executable not found"
 
 
 def test_missing_docling_package(monkeypatch) -> None:
@@ -154,13 +156,13 @@ def test_diagnostic_report_contains_no_sensitive_paths() -> None:
 def test_platform_specific_guidance() -> None:
     assert "Homebrew" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin")
     assert "ghostscript" in system_diagnostics.installation_guidance("ocrmypdf", "Darwin").lower()
-    assert "packaged app" in system_diagnostics.installation_guidance("tesseract", "Windows")
+    assert "winget" in system_diagnostics.installation_guidance("tesseract", "Windows")
     assert "package manager" in system_diagnostics.installation_guidance("ocrmypdf", "Linux")
     assert "pypdf" in system_diagnostics.installation_guidance("pypdf", "Linux")
 
 
 def test_ghostscript_missing_executable(monkeypatch) -> None:
-    monkeypatch.setattr(system_diagnostics, "find_executable", lambda *args, **kwargs: None)
+    monkeypatch.setattr(system_diagnostics, "resolve_ghostscript_executable", lambda *args, **kwargs: None)
 
     result = check_ghostscript()
 
@@ -171,15 +173,11 @@ def test_ghostscript_missing_executable(monkeypatch) -> None:
 def test_ghostscript_diagnostics_on_macos_uses_source_label(monkeypatch) -> None:
     monkeypatch.setattr(system_diagnostics.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(system_diagnostics, "macos_finder_search_paths", lambda: ("/opt/homebrew/bin",))
-    monkeypatch.setattr(
-        system_diagnostics,
-        "find_executable",
-        lambda *args, **kwargs: "/opt/homebrew/bin/gs",
-    )
+    monkeypatch.setattr(system_diagnostics, "resolve_ghostscript_executable", lambda *args, **kwargs: "/opt/homebrew/bin/gs")
     monkeypatch.setattr(system_diagnostics, "_run_command", lambda command: (True, "10.0.0\n", None))
 
     result = check_ghostscript()
 
     assert result.available
-    assert result.details == ("Source: Homebrew fallback",)
+    assert result.details == ("Required for searchable PDF output.", "Source: Homebrew")
     assert "/opt/homebrew/bin/gs" not in "\n".join(result.details)

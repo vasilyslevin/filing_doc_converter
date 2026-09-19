@@ -1,9 +1,6 @@
 param(
     [string]$Python = "python",
-    [string]$OutputDirectory = "",
-    [string]$TesseractRoot = "",
-    [ValidateSet("Full", "Lite")]
-    [string]$PackageFlavor = "Full"
+    [string]$OutputDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,14 +14,11 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 $SourceRoot = Join-Path $RepositoryRoot "src"
 $GuiEntry = Join-Path $PSScriptRoot "SourceDocumentConverter.py"
 $ToolsEntry = Join-Path $PSScriptRoot "docling-tools.py"
-$OcrEntry = Join-Path $SourceRoot "source_doc_converter\ocrmypdf_entry.py"
 $IconGenerator = Join-Path $PSScriptRoot "create_icon.py"
 $IconSource = Join-Path $SourceRoot "source_doc_converter\assets\app_icon.svg"
 $IconPath = Join-Path $OutputDirectory "SourceDocumentConverter.ico"
-$TesseractBundler = Join-Path $PSScriptRoot "bundle-tesseract.ps1"
 $TorchvisionRuntimeHook = Join-Path $PSScriptRoot "pyi_rth_torchvision.py"
 $PackagingNotes = Join-Path $PSScriptRoot "PACKAGING_NOTES.txt"
-$LitePackagingNotes = Join-Path $PSScriptRoot "PACKAGING_NOTES_LITE.txt"
 $StagingDirectory = Join-Path $OutputDirectory "dist"
 $WorkDirectory = Join-Path $OutputDirectory "work"
 $SpecDirectory = Join-Path $OutputDirectory "spec"
@@ -195,10 +189,6 @@ $GuiArguments = $DoclingArguments + @(
     "--icon=$IconPath",
     "--add-data=$IconSource;source_doc_converter/assets"
 )
-$OcrArguments = @(
-    "--collect-all=ocrmypdf",
-    "--hidden-import=ocrmypdf.__main__"
-)
 
 function Invoke-PackageBuild {
     param(
@@ -224,16 +214,11 @@ Push-Location $RepositoryRoot
 try {
     Invoke-PackageBuild -Name "SourceDocumentConverter" -EntryPoint $GuiEntry -ConsoleMode "--windowed" -AdditionalArguments $GuiArguments
     Invoke-PackageBuild -Name "docling-tools" -EntryPoint $ToolsEntry -ConsoleMode "--console" -AdditionalArguments $DoclingArguments
-    if ($PackageFlavor -eq "Full") {
-        Invoke-PackageBuild -Name "ocrmypdf" -EntryPoint $OcrEntry -ConsoleMode "--console" -AdditionalArguments $OcrArguments
-    }
 
     $Distribution = Join-Path $StagingDirectory "SourceDocumentConverter"
     $ToolsDistribution = Join-Path $StagingDirectory "docling-tools"
     $GuiExecutable = Join-Path $Distribution "SourceDocumentConverter.exe"
     $ToolsExecutable = Join-Path $ToolsDistribution "docling-tools.exe"
-    $OcrDistribution = Join-Path $StagingDirectory "ocrmypdf"
-    $OcrExecutable = Join-Path $OcrDistribution "ocrmypdf.exe"
 
     if (-not (Test-Path $GuiExecutable -PathType Leaf)) {
         throw "SourceDocumentConverter.exe was not produced."
@@ -241,18 +226,9 @@ try {
     if (-not (Test-Path $ToolsExecutable -PathType Leaf)) {
         throw "docling-tools.exe was not produced."
     }
-    if ($PackageFlavor -eq "Full" -and -not (Test-Path $OcrExecutable -PathType Leaf)) {
-        throw "ocrmypdf.exe was not produced."
-    }
 
     Copy-Item (Join-Path $ToolsDistribution "*") $Distribution -Recurse -Force
-    if ($PackageFlavor -eq "Full") {
-        Copy-Item (Join-Path $OcrDistribution "*") $Distribution -Recurse -Force
-    }
     Remove-Item $ToolsDistribution -Recurse -Force
-    if (Test-Path $OcrDistribution) {
-        Remove-Item $OcrDistribution -Recurse -Force
-    }
 
     $PackagedTorchvisionExtensions = Get-ChildItem -Path $Distribution -Filter "_C*.pyd" -File -Recurse |
         Where-Object { $_.FullName -like "*\\torchvision\\*" }
@@ -276,28 +252,9 @@ try {
         throw "Packaged Docling runtime check failed with exit code $LASTEXITCODE."
     }
 
-    if ($PackageFlavor -eq "Full") {
-        $TesseractDestination = Join-Path $Distribution "tools\tesseract"
-        if ([string]::IsNullOrWhiteSpace($TesseractRoot)) {
-            & $TesseractBundler -DestinationDirectory $TesseractDestination -WorkDirectory (Join-Path $OutputDirectory "tesseract")
-        } else {
-            & $TesseractBundler -SourceDirectory $TesseractRoot -DestinationDirectory $TesseractDestination -WorkDirectory (Join-Path $OutputDirectory "tesseract")
-        }
-        if ($LASTEXITCODE -ne 0) {
-            throw "Tesseract bundling failed with exit code $LASTEXITCODE."
-        }
-    }
-
     Copy-Item (Join-Path $RepositoryRoot "LICENSE") $Distribution -Force
     Copy-Item (Join-Path $RepositoryRoot "THIRD_PARTY_NOTICES.md") $Distribution -Force
-    if ($PackageFlavor -eq "Lite") {
-        if (-not (Test-Path $LitePackagingNotes -PathType Leaf)) {
-            throw "Missing Lite package notes file: $LitePackagingNotes"
-        }
-        Copy-Item $LitePackagingNotes (Join-Path $Distribution "PACKAGING_NOTES.txt") -Force
-    } else {
-        Copy-Item $PackagingNotes (Join-Path $Distribution "PACKAGING_NOTES.txt") -Force
-    }
+    Copy-Item $PackagingNotes (Join-Path $Distribution "PACKAGING_NOTES.txt") -Force
 
     $HashTargets = @(
         "SourceDocumentConverter.exe",
@@ -305,24 +262,7 @@ try {
         "LICENSE",
         "THIRD_PARTY_NOTICES.md",
         "PACKAGING_NOTES.txt"
-    )
-    if ($PackageFlavor -eq "Full") {
-        $HashTargets += @(
-            "ocrmypdf.exe",
-            "tools\tesseract\BUNDLE_INFO.txt"
-        )
-        $TesseractFiles = Get-ChildItem (Join-Path $Distribution "tools\tesseract") -File -Recurse |
-            Sort-Object FullName
-        if ($TesseractFiles.Count -eq 0) {
-            throw "No bundled tesseract files were found for hashing."
-        }
-        $RelativeTesseractFiles = $TesseractFiles |
-            ForEach-Object {
-                $_.FullName.Substring($Distribution.Length + 1)
-            }
-        $HashTargets += $RelativeTesseractFiles
-    }
-    $HashTargets = $HashTargets | Sort-Object -Unique
+    ) | Sort-Object -Unique
     $Hashes = foreach ($RelativePath in $HashTargets) {
         $Target = Join-Path $Distribution $RelativePath
         if (-not (Test-Path $Target -PathType Leaf)) {

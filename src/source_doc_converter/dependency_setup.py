@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,16 +52,29 @@ class DependencySetupWorker(QObject):
             diagnostics = self._diagnostics_provider()
             steps = self._steps_builder(diagnostics)
             if not steps:
-                if system() != "Windows":
+                missing_ocr_tools = any(
+                    not component.available
+                    and component.key in {"ocrmypdf", "tesseract", "ghostscript"}
+                    for component in diagnostics.components
+                )
+                if not missing_ocr_tools:
+                    self.status_changed.emit("Ready")
+                    self.completed.emit()
+                    return
+                if system() not in {"Windows", "Darwin"}:
                     message = (
-                        "Guided dependency setup is only available on Windows.\n\n"
+                        "Guided OCR setup is available on Windows and macOS.\n\n"
                         f"{installation_guidance('ocrmypdf', system())}"
                     )
                     self.status_changed.emit("Manual setup required")
                     self.failed.emit(message)
                     return
-                self.status_changed.emit("Ready")
-                self.completed.emit()
+                message = (
+                    "Guided OCR setup is currently unavailable.\n\n"
+                    f"{installation_guidance('ocrmypdf', system())}"
+                )
+                self.status_changed.emit("Manual setup required")
+                self.failed.emit(message)
                 return
 
             for step in steps:
@@ -143,38 +157,69 @@ class DependencySetupWorker(QObject):
 
 
 def _default_steps(diagnostics: SystemDiagnostics) -> list[DependencyInstallStep]:
-    if system() != "Windows":
-        return []
+    active_system = system()
     missing: dict[str, ComponentStatus] = {
         component.key: component
         for component in diagnostics.components
         if not component.available
     }
     steps: list[DependencyInstallStep] = []
-    if "tesseract" in missing:
-        steps.append(
-            DependencyInstallStep(
-                "tesseract",
-                "Tesseract OCR",
-                ("winget", "install", "-e", "--id", "UB-Mannheim.TesseractOCR"),
+    if active_system == "Windows":
+        if shutil.which("winget") is None:
+            return []
+        if "tesseract" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "tesseract",
+                    "Tesseract OCR",
+                    ("winget", "install", "-e", "--id", "UB-Mannheim.TesseractOCR"),
+                )
             )
-        )
-    if "ocrmypdf" in missing:
-        steps.append(
-            DependencyInstallStep(
-                "ocrmypdf",
-                "OCRmyPDF",
-                ("winget", "install", "-e", "--id", "OCRmyPDF.OCRmyPDF"),
+        if "ocrmypdf" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "ocrmypdf",
+                    "OCRmyPDF",
+                    ("winget", "install", "-e", "--id", "OCRmyPDF.OCRmyPDF"),
+                )
             )
-        )
-    if "ghostscript" in missing:
-        steps.append(
-            DependencyInstallStep(
-                "ghostscript",
-                "Ghostscript",
-                ("winget", "install", "-e", "--id", "ArtifexSoftware.GhostScript"),
+        if "ghostscript" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "ghostscript",
+                    "Ghostscript",
+                    ("winget", "install", "-e", "--id", "ArtifexSoftware.GhostScript"),
+                )
             )
-        )
+        return steps
+    if active_system == "Darwin":
+        if shutil.which("brew") is None:
+            return []
+        if "ocrmypdf" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "ocrmypdf",
+                    "OCRmyPDF",
+                    ("brew", "install", "ocrmypdf"),
+                )
+            )
+        if "tesseract" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "tesseract",
+                    "Tesseract OCR",
+                    ("brew", "install", "tesseract"),
+                )
+            )
+        if "ghostscript" in missing:
+            steps.append(
+                DependencyInstallStep(
+                    "ghostscript",
+                    "Ghostscript",
+                    ("brew", "install", "ghostscript"),
+                )
+            )
+        return steps
     return steps
 
 

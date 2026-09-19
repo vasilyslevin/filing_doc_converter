@@ -255,16 +255,10 @@ class ApplicationWindow(MainWindow):
         self.tesseract_profile_combo.clear()
         self.tesseract_profile_combo.addItem("Automatic", ("automatic", ""))
         for installation in self._tesseract_installations:
-            if installation.is_bundled:
-                self.tesseract_profile_combo.addItem(
-                    "Bundled Tesseract (recommended)",
-                    ("bundled", str(installation.executable)),
-                )
-            else:
-                self.tesseract_profile_combo.addItem(
-                    installation.label,
-                    ("system", str(installation.executable)),
-                )
+            self.tesseract_profile_combo.addItem(
+                installation.label,
+                ("system", str(installation.executable)),
+            )
         selected_index = 0
         for index in range(self.tesseract_profile_combo.count()):
             mode, path = self.tesseract_profile_combo.itemData(index)

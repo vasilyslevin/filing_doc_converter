@@ -65,7 +65,6 @@ jobs:
           test -d "$APP_PATH"
           test -f "$APP_PATH/Contents/MacOS/SourceDocumentConverter"
           test -f "$APP_PATH/Contents/MacOS/docling-tools"
-          test -f "$APP_PATH/Contents/MacOS/ocrmypdf"
           test -f "$APP_PATH/Contents/Resources/LICENSE"
           test -f "$APP_PATH/Contents/Resources/THIRD_PARTY_NOTICES.md"
           test -f "$APP_PATH/Contents/Resources/PACKAGING_NOTES.txt"
@@ -90,7 +89,6 @@ jobs:
           "$APP_EXEC" --package-smoke-test
           build/macos/dist/Source\ Document\ Converter.app/Contents/MacOS/docling-tools --runtime-check
           build/macos/dist/Source\ Document\ Converter.app/Contents/MacOS/docling-tools models download --help
-          build/macos/dist/Source\ Document\ Converter.app/Contents/MacOS/ocrmypdf --version
 
       - name: Verify ad-hoc signature
         run: |

@@ -19,6 +19,8 @@ from source_doc_converter.subprocess_utils import background_subprocess_kwargs
 TESSERACT_PROFILE_MODE_SETTING = "ocr/tesseract_profile_mode"
 TESSERACT_PROFILE_PATH_SETTING = "ocr/tesseract_profile_path"
 TESSERACT_LANGUAGES_SETTING = "ocr/tesseract_languages"
+OCRMYPDF_PATH_SETTING = "ocr/ocrmypdf_path"
+GHOSTSCRIPT_PATH_SETTING = "ocr/ghostscript_path"
 
 
 @dataclass(frozen=True)
@@ -82,20 +84,85 @@ def find_bundled_tesseract() -> BundledTesseract | None:
     return None
 
 
-def resolve_ocrmypdf_executable() -> str | None:
-    if is_packaged_application():
-        executable_root = Path(sys.executable).resolve().parent
-        for companion_name in ("ocrmypdf.exe", "ocrmypdf"):
-            companion = executable_root / companion_name
-            if companion.is_file():
-                return str(companion)
-        resources = packaged_resources_directory()
-        if resources is not None:
-            for companion_name in ("ocrmypdf.exe", "ocrmypdf"):
-                companion = resources / companion_name
-                if companion.is_file():
-                    return str(companion)
-    return find_executable("ocrmypdf", extra_directories=macos_finder_search_paths())
+def _manual_setting_path(settings: QSettings | None, key: str) -> Path | None:
+    active = settings if settings is not None else QSettings()
+    raw = str(active.value(key, "")).strip()
+    if not raw:
+        return None
+    candidate = Path(raw).expanduser()
+    if not candidate.is_file():
+        return None
+    return candidate.resolve()
+
+
+def _windows_ocrmypdf_documented_paths() -> tuple[Path, ...]:
+    roots: list[Path] = []
+    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        roots.append(Path(local_app_data) / "Microsoft" / "WinGet" / "Links" / "ocrmypdf.exe")
+        roots.append(Path(local_app_data) / "Programs" / "OCRmyPDF" / "ocrmypdf.exe")
+    roots.append(Path("C:/Program Files/OCRmyPDF/ocrmypdf.exe"))
+    return tuple(roots)
+
+
+def resolve_ocrmypdf_executable(settings: QSettings | None = None) -> str | None:
+    manual = _manual_setting_path(settings, OCRMYPDF_PATH_SETTING)
+    if manual is not None:
+        return str(manual)
+
+    resolved = find_executable("ocrmypdf", extra_directories=macos_finder_search_paths())
+    if resolved:
+        return resolved
+
+    if os.name == "nt":
+        for candidate in _windows_ocrmypdf_documented_paths():
+            if candidate.is_file():
+                return str(candidate.resolve())
+    return None
+
+
+def _windows_ghostscript_documented_paths() -> tuple[Path, ...]:
+    roots: list[Path] = []
+    for executable_name in ("gswin64c.exe", "gswin32c.exe"):
+        roots.extend(
+            [
+                Path("C:/Program Files/gs") / executable_name,
+                Path("C:/Program Files (x86)/gs") / executable_name,
+            ]
+        )
+    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        roots.extend(
+            [
+                Path(local_app_data) / "Microsoft" / "WinGet" / "Links" / "gswin64c.exe",
+                Path(local_app_data) / "Microsoft" / "WinGet" / "Links" / "gswin32c.exe",
+            ]
+        )
+    matches: list[Path] = []
+    for root in roots:
+        if root.name.lower().startswith("gswin") and root.parent.name.lower() == "gs":
+            matches.extend(sorted(root.parent.glob(f"**/{root.name}")))
+        else:
+            matches.append(root)
+    return tuple(matches)
+
+
+def resolve_ghostscript_executable(settings: QSettings | None = None) -> str | None:
+    manual = _manual_setting_path(settings, GHOSTSCRIPT_PATH_SETTING)
+    if manual is not None:
+        return str(manual)
+
+    if os.name == "nt":
+        for candidate_name in ("gswin64c", "gswin32c", "gs"):
+            resolved = find_executable(candidate_name)
+            if resolved:
+                return resolved
+        for candidate in _windows_ghostscript_documented_paths():
+            if candidate.is_file():
+                return str(candidate.resolve())
+        return None
+
+    return find_executable("gs", extra_directories=macos_finder_search_paths())
 
 
 def _windows_documented_paths() -> tuple[Path, ...]:
@@ -111,6 +178,9 @@ def _windows_documented_paths() -> tuple[Path, ...]:
 
 def _candidate_system_executables() -> tuple[tuple[str, Path], ...]:
     candidates: list[tuple[str, Path]] = []
+    if platform.system() == "Darwin":
+        for prefix in macos_finder_search_paths():
+            candidates.append(("homebrew", prefix / "tesseract"))
     path_exec = find_executable("tesseract", extra_directories=macos_finder_search_paths())
     if path_exec:
         source = "path"
@@ -124,9 +194,6 @@ def _candidate_system_executables() -> tuple[tuple[str, Path], ...]:
                 except ValueError:
                     continue
         candidates.append((source, Path(path_exec)))
-    if platform.system() == "Darwin":
-        for prefix in macos_finder_search_paths():
-            candidates.append(("homebrew", prefix / "tesseract"))
     if os.name == "nt":
         for path in _windows_documented_paths():
             candidates.append(("known-location", path))
@@ -176,19 +243,6 @@ def _list_languages(executable: Path, tessdata: Path) -> tuple[str, ...]:
 
 def discover_tesseract_installations() -> tuple[TesseractInstallation, ...]:
     installations: list[TesseractInstallation] = []
-    bundled = find_bundled_tesseract()
-    if bundled is not None:
-        languages = _list_languages(bundled.executable, bundled.tessdata)
-        if languages:
-            installations.append(
-                TesseractInstallation(
-                    label="Bundled Tesseract (recommended)",
-                    source="bundled",
-                    executable=bundled.executable,
-                    tessdata=bundled.tessdata,
-                    languages=languages,
-                )
-            )
     for source, executable in _candidate_system_executables():
         if not executable.is_file():
             continue
@@ -266,11 +320,7 @@ def resolve_tesseract_profile(
         if manual is not None:
             return TesseractRuntimeProfile(manual, "manual")
 
-    bundled = next((item for item in candidates if item.is_bundled), None)
     systems = tuple(item for item in candidates if not item.is_bundled)
-
-    if mode == "bundled" and bundled is not None:
-        return TesseractRuntimeProfile(bundled, "bundled")
     if mode == "system" and explicit:
         match = next(
             (
@@ -283,8 +333,6 @@ def resolve_tesseract_profile(
         if match is not None:
             return TesseractRuntimeProfile(match, "system")
 
-    if bundled is not None:
-        return TesseractRuntimeProfile(bundled, "automatic")
     if systems:
         return TesseractRuntimeProfile(systems[0], "automatic")
     return None
