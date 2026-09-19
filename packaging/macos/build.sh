@@ -270,7 +270,10 @@ copy_companion_runtime() {
     local destination_path="$destination_dir/$name"
     if [[ -d "$payload" ]]; then
       mkdir -p "$destination_path"
-      rsync -a "$payload"/ "$destination_path"/
+      rsync -a \
+        --exclude='*.dist-info/' \
+        --exclude='*.egg-info/' \
+        "$payload"/ "$destination_path"/
     else
       cp "$payload" "$destination_path"
     fi
