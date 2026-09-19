@@ -15,7 +15,6 @@ SPEC_DIR="$OUTPUT_DIR/spec"
 ICON_PATH="$OUTPUT_DIR/SourceDocumentConverter.icns"
 ICON_SOURCE="$REPO_ROOT/src/source_doc_converter/assets/app_icon.svg"
 GUI_ENTRY="$SCRIPT_DIR/SourceDocumentConverter.py"
-TOOLS_ENTRY="$SCRIPT_DIR/docling-tools.py"
 PACKAGE_NOTES="$SCRIPT_DIR/PACKAGING_NOTES.txt"
 PYPROJECT_PATH="$REPO_ROOT/pyproject.toml"
 TORCHVISION_RUNTIME_HOOK="$REPO_ROOT/packaging/windows/pyi_rth_torchvision.py"
@@ -218,12 +217,6 @@ DOCLING_ARGS=(
   "--add-data=$REPO_ROOT/src/source_doc_converter/assets/app_icon.svg:source_doc_converter/assets" \
   "$GUI_ENTRY"
 
-"$PYTHON_BIN" "${COMMON_ARGS[@]}" "${DOCLING_ARGS[@]}" \
-  "--workpath=$WORK_DIR/docling-tools" \
-  --name=docling-tools \
-  --console \
-  "$TOOLS_ENTRY"
-
 APP_DIR="$DIST_DIR/$EXECUTABLE_NAME.app"
 if [[ ! -d "$APP_DIR" ]]; then
   echo "PyInstaller did not produce $EXECUTABLE_NAME.app" >&2
@@ -232,45 +225,6 @@ fi
 RENAMED_APP_DIR="$DIST_DIR/$APP_NAME"
 mv "$APP_DIR" "$RENAMED_APP_DIR"
 APP_DIR="$RENAMED_APP_DIR"
-
-copy_companion_runtime() {
-  local companion="$1"
-  local source_dir="$DIST_DIR/$companion"
-  local destination_dir="$APP_DIR/Contents/MacOS"
-  local executable_path="$source_dir/$companion"
-
-  if [[ ! -f "$executable_path" ]]; then
-    echo "Companion executable was not produced: $executable_path" >&2
-    exit 1
-  fi
-
-  cp "$executable_path" "$destination_dir/$companion"
-
-  shopt -s nullglob
-  local payload
-  for payload in "$source_dir"/*; do
-    local name
-    name="$(basename "$payload")"
-    if [[ "$name" == "$companion" ]]; then
-      continue
-    fi
-
-    local destination_path="$destination_dir/$name"
-    if [[ -d "$payload" ]]; then
-      mkdir -p "$destination_path"
-      rsync -a \
-        --exclude='*.dist-info/' \
-        --exclude='*.egg-info/' \
-        "$payload"/ "$destination_path"/
-    else
-      cp "$payload" "$destination_path"
-    fi
-  done
-  shopt -u nullglob
-}
-
-copy_companion_runtime "docling-tools"
-rm -rf "$DIST_DIR/docling-tools"
 
 PACKAGED_TORCHVISION_EXTENSIONS=()
 while IFS= read -r -d '' EXTENSION; do

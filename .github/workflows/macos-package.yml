@@ -64,10 +64,15 @@ jobs:
           APP_PATH="build/macos/dist/Source Document Converter.app"
           test -d "$APP_PATH"
           test -f "$APP_PATH/Contents/MacOS/SourceDocumentConverter"
-          test -f "$APP_PATH/Contents/MacOS/docling-tools"
           test -f "$APP_PATH/Contents/Resources/LICENSE"
           test -f "$APP_PATH/Contents/Resources/THIRD_PARTY_NOTICES.md"
           test -f "$APP_PATH/Contents/Resources/PACKAGING_NOTES.txt"
+          ! test -f "$APP_PATH/Contents/MacOS/ocrmypdf"
+          ! test -f "$APP_PATH/Contents/MacOS/docling-tools"
+          ! find "$APP_PATH" -type f -path "*/pikepdf/*" | grep -q .
+          ! find "$APP_PATH" -type f \( -name "qpdf*.dylib" -o -name "libqpdf*.dylib" \) | grep -q .
+          ! find "$APP_PATH" -type f \( -name "tesseract" -o -name "tesseract.exe" \) | grep -q .
+          ! find "$APP_PATH" -type f \( -name "gs" -o -name "gswin32c.exe" -o -name "gswin64c.exe" \) | grep -q .
           file "$APP_PATH/Contents/MacOS/SourceDocumentConverter" | grep -q "arm64"
           lipo -archs "$APP_PATH/Contents/MacOS/SourceDocumentConverter" | grep -Eq '(^| )arm64( |$)'
           while IFS= read -r -d '' CANDIDATE; do
@@ -87,8 +92,8 @@ jobs:
         run: |
           APP_EXEC="build/macos/dist/Source Document Converter.app/Contents/MacOS/SourceDocumentConverter"
           "$APP_EXEC" --package-smoke-test
-          build/macos/dist/Source\ Document\ Converter.app/Contents/MacOS/docling-tools --runtime-check
-          build/macos/dist/Source\ Document\ Converter.app/Contents/MacOS/docling-tools models download --help
+          "$APP_EXEC" --docling-tools --runtime-check
+          "$APP_EXEC" --docling-tools models download --help
 
       - name: Verify ad-hoc signature
         run: |

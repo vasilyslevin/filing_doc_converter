@@ -93,3 +93,23 @@ def test_ocrmypdf_entry_invokes_upstream_cli(monkeypatch) -> None:
 
     assert ocrmypdf_entry.main() == 0
     assert calls == ["run"]
+
+
+def test_main_dispatches_docling_tools_mode_without_gui(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(application_entry.multiprocessing, "freeze_support", lambda: None)
+    monkeypatch.setattr(application_entry, "prepare_packaged_path", lambda: None)
+    monkeypatch.setattr(application_entry, "QApplication", lambda args: (_ for _ in ()).throw(AssertionError("QApplication should not be created")))
+    monkeypatch.setattr(
+        application_entry,
+        "run_docling_tools_command",
+        lambda arguments: calls.append(arguments) or 0,
+    )
+    monkeypatch.setattr(
+        application_entry.sys,
+        "argv",
+        ["source-doc-converter", "--docling-tools", "--runtime-check"],
+    )
+
+    assert application_entry.main() == 0
+    assert calls == [["--runtime-check"]]
