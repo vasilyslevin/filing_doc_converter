@@ -1,8 +1,18 @@
-# Filing Document Converter
+# Source Document Converter
 
 > **Work in progress:** This project is under active development and is not ready for production or court use.
 
-Filing Document Converter is a local-first desktop application for converting legal PDF filings into searchable PDFs and AI-readable Markdown or JSON.
+Source Document Converter is a local-first desktop application for preparing PDF source materials—including research papers, legal filings, reports, exhibits, and scanned records—for search, citation, and AI-assisted analysis. It creates searchable PDFs and structured Markdown or JSON while keeping documents and processing local.
+
+## Use cases
+
+- Academic papers and research sources that need searchable text and citation-ready extraction.
+- Legal and court filings, including ECF/docket exports, while preserving legal-review workflows.
+- Exhibits and supporting records that must stay linked to original PDF pagination.
+- Scanned archival documents that require OCR before review or analysis.
+- Reports and reference materials prepared for local search and retrieval.
+- Searchable-PDF preparation for mixed digital/scanned source sets.
+- Markdown/JSON preparation for AI-assisted analysis without uploading documents.
 
 ## Current features
 
@@ -237,7 +247,7 @@ pytest
 ruff check .
 ```
 
-GitHub Actions runs both commands on Ubuntu, Windows, and macOS. Tests mock optional converters and model downloads; CI does not download Docling models or require OCRmyPDF in ordinary test jobs.
+GitHub Actions for `source_doc_converter` runs both commands on Ubuntu, Windows, and macOS. Tests mock optional converters and model downloads; CI does not download Docling models or require OCRmyPDF in ordinary test jobs.
 
 ## Packaging direction
 
