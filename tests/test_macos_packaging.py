@@ -1,3 +1,8 @@
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 from source_doc_converter.macos_packaging import (
@@ -22,3 +27,37 @@ def test_bundle_metadata_uses_source_document_converter_identity() -> None:
     assert metadata.bundle_name == "Source Document Converter"
     assert metadata.executable_name == "SourceDocumentConverter"
     assert metadata.bundle_identifier == "com.source.document.converter"
+
+
+def test_pyproject_version_extraction_works_without_environment_variable(tmp_path: Path) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        "[project]\nversion = \"0.2.0\"\n",
+        encoding="utf-8",
+    )
+    extractor = """
+import pathlib
+import sys
+import tomllib
+path = pathlib.Path(sys.argv[1])
+data = tomllib.loads(path.read_text(encoding="utf-8"))
+project = data.get("project")
+if not isinstance(project, dict):
+    raise SystemExit(2)
+version = project.get("version")
+if not isinstance(version, str) or not version.strip():
+    raise SystemExit(3)
+print(version.strip())
+"""
+    env = dict(os.environ)
+    env.pop("PYPROJECT_PATH", None)
+
+    completed = subprocess.run(
+        [sys.executable, "-c", extractor, str(pyproject)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert completed.stdout.strip() == "0.2.0"

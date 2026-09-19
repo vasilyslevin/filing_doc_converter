@@ -38,7 +38,29 @@ esac
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$DIST_DIR" "$WORK_DIR" "$SPEC_DIR"
 
-PROJECT_VERSION="$("$PYTHON_BIN" -c 'import os, pathlib, tomllib; print(tomllib.loads(pathlib.Path(os.environ["PYPROJECT_PATH"]).read_text(encoding="utf-8"))["project"]["version"])')"
+PROJECT_VERSION="$("$PYTHON_BIN" -c '
+import pathlib
+import sys
+import tomllib
+
+path = pathlib.Path(sys.argv[1])
+try:
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+except FileNotFoundError:
+    raise SystemExit(f"pyproject.toml was not found: {path}")
+except OSError as error:
+    raise SystemExit(f"Unable to read pyproject.toml at {path}: {error}")
+except tomllib.TOMLDecodeError as error:
+    raise SystemExit(f"Invalid TOML in {path}: {error}")
+
+project = data.get("project")
+if not isinstance(project, dict):
+    raise SystemExit(f"Missing [project] table in {path}")
+version = project.get("version")
+if not isinstance(version, str) or not version.strip():
+    raise SystemExit(f"Missing or empty project.version in {path}")
+print(version.strip())
+' "$PYPROJECT_PATH")"
 
 "$PYTHON_BIN" "$SCRIPT_DIR/create_icns.py" "$ICON_SOURCE" "$ICON_PATH"
 
