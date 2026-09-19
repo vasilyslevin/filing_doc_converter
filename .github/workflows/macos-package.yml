@@ -1,4 +1,4 @@
-name: macOS package
+name: macOS package (Apple Silicon)
 
 on:
   workflow_dispatch:
@@ -19,20 +19,12 @@ permissions:
 
 jobs:
   package:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-14
-          - arch: x86_64
-            runner: macos-13
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     timeout-minutes: 120
     env:
       QT_QPA_PLATFORM: offscreen
       QT_API: pyside6
-      ARCH: ${{ matrix.arch }}
+      ARCH: arm64
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
       DO_NOT_TRACK: "1"
@@ -61,7 +53,7 @@ jobs:
       - name: Build macOS app bundle
         run: |
           chmod +x packaging/macos/build.sh packaging/macos/sign_and_notarize.sh
-          ARCH=${{ matrix.arch }} ./packaging/macos/build.sh
+          ARCH=arm64 ./packaging/macos/build.sh
 
       - name: Verify app bundle contents
         run: |
@@ -73,7 +65,18 @@ jobs:
           test -f "$APP_PATH/Contents/Resources/LICENSE"
           test -f "$APP_PATH/Contents/Resources/THIRD_PARTY_NOTICES.md"
           test -f "$APP_PATH/Contents/Resources/PACKAGING_NOTES.txt"
-          file "$APP_PATH/Contents/MacOS/SourceDocumentConverter" | grep -q "${{ matrix.arch }}"
+          file "$APP_PATH/Contents/MacOS/SourceDocumentConverter" | grep -q "arm64"
+          lipo -archs "$APP_PATH/Contents/MacOS/SourceDocumentConverter" | grep -Eq '(^| )arm64( |$)'
+          while IFS= read -r -d '' CANDIDATE; do
+            if file "$CANDIDATE" | grep -q "Mach-O"; then
+              ARCHS="$(lipo -archs "$CANDIDATE" 2>/dev/null || true)"
+              echo "$CANDIDATE => $ARCHS"
+              echo "$ARCHS" | grep -Eq '(^| )arm64( |$)' || {
+                echo "Missing arm64 slice in bundled binary: $CANDIDATE" >&2
+                exit 1
+              }
+            fi
+          done < <(find "$APP_PATH" -type f \( -perm -111 -o -name "*.dylib" -o -name "*.so" \) -print0)
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$APP_PATH/Contents/Info.plist" | grep -q "Source Document Converter"
           /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP_PATH/Contents/Info.plist" | grep -q "SourceDocumentConverter"
 
@@ -132,16 +135,16 @@ jobs:
           APPLE_API_PRIVATE_KEY_BASE64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
         run: |
           APP_PATH="build/macos/dist/Source Document Converter.app"
-          ./packaging/macos/sign_and_notarize.sh "$APP_PATH" "${{ matrix.arch }}"
+          ./packaging/macos/sign_and_notarize.sh "$APP_PATH" "arm64"
 
       - name: Upload macOS artifact files
         uses: actions/upload-artifact@v4
         with:
-          name: SourceDocumentConverter-macOS-${{ matrix.arch }}
+          name: SourceDocumentConverter-macOS-arm64
           path: |
-            build/macos/dist/SourceDocumentConverter-macOS-${{ matrix.arch }}.zip
-            build/macos/dist/SourceDocumentConverter-macOS-${{ matrix.arch }}.zip.sha256
-            build/macos/dist/SourceDocumentConverter-macOS-${{ matrix.arch }}.dmg
-            build/macos/dist/SourceDocumentConverter-macOS-${{ matrix.arch }}.dmg.sha256
+            build/macos/dist/SourceDocumentConverter-macOS-arm64.zip
+            build/macos/dist/SourceDocumentConverter-macOS-arm64.zip.sha256
+            build/macos/dist/SourceDocumentConverter-macOS-arm64.dmg
+            build/macos/dist/SourceDocumentConverter-macOS-arm64.dmg.sha256
           if-no-files-found: warn
           retention-days: 14

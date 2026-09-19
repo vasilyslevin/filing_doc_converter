@@ -72,7 +72,7 @@ brew install ocrmypdf tesseract ghostscript
 python -m pip install -e ".[docling]"
 ```
 
-For native macOS package installation, architecture-specific downloads, checksum verification, Finder launch behavior, and signing/notarization notes, see [docs/macos.md](docs/macos.md).
+For native macOS Apple Silicon package installation, checksum verification, Finder launch behavior, and signing/notarization notes, see [docs/macos.md](docs/macos.md).
 
 ### Windows
 

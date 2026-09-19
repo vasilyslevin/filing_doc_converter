@@ -3,18 +3,17 @@
 ## Supported macOS targets
 
 - Apple Silicon package: `SourceDocumentConverter-macOS-arm64.zip` (and optional DMG)
-- Intel package: `SourceDocumentConverter-macOS-x86_64.zip` (and optional DMG)
 - Minimum supported macOS version: 12.0
 
-Choose the package matching your Mac architecture. This milestone does not provide a universal binary.
+This milestone provides Apple Silicon packages only.
 
 ## Install and verify
 
-1. Download the matching ZIP (or DMG) and its `.sha256` file.
+1. Download `SourceDocumentConverter-macOS-arm64.zip` (or DMG) and its `.sha256` file.
 2. Verify integrity:
 
    ```bash
-   shasum -a 256 -c SourceDocumentConverter-macOS-<arch>.zip.sha256
+   shasum -a 256 -c SourceDocumentConverter-macOS-arm64.zip.sha256
    ```
 
 3. Expand the ZIP (or open the DMG) and move `Source Document Converter.app` to `/Applications` if desired.

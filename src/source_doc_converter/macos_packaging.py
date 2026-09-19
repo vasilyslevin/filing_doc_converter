@@ -17,8 +17,6 @@ def normalize_macos_architecture(value: str) -> str:
     aliases = {
         "arm64": "arm64",
         "aarch64": "arm64",
-        "x86_64": "x86_64",
-        "amd64": "x86_64",
     }
     if normalized not in aliases:
         raise ValueError(f"Unsupported macOS architecture: {value}")

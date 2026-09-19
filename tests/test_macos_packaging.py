@@ -9,12 +9,11 @@ from source_doc_converter.macos_packaging import (
 def test_architecture_aliases_are_normalized() -> None:
     assert normalize_macos_architecture("arm64") == "arm64"
     assert normalize_macos_architecture("aarch64") == "arm64"
-    assert normalize_macos_architecture("amd64") == "x86_64"
 
 
 def test_unsupported_architecture_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unsupported macOS architecture"):
-        normalize_macos_architecture("universal2")
+        normalize_macos_architecture("x86_64")
 
 
 def test_bundle_metadata_uses_source_document_converter_identity() -> None:

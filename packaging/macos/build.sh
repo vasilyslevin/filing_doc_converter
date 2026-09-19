@@ -21,10 +21,18 @@ PACKAGE_NOTES="$SCRIPT_DIR/PACKAGING_NOTES.txt"
 PYPROJECT_PATH="$REPO_ROOT/pyproject.toml"
 
 case "$ARCH" in
-  arm64|x86_64) ;;
+  arm64) ;;
   aarch64) ARCH="arm64" ;;
-  amd64) ARCH="x86_64" ;;
   *) echo "Unsupported architecture: $ARCH" >&2; exit 2 ;;
+esac
+
+HOST_ARCH="$(uname -m)"
+case "$HOST_ARCH" in
+  arm64|aarch64) ;;
+  *)
+    echo "Apple Silicon runner is required; current host architecture is $HOST_ARCH" >&2
+    exit 2
+    ;;
 esac
 
 rm -rf "$OUTPUT_DIR"

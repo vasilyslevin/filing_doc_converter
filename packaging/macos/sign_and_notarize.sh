@@ -3,6 +3,10 @@ set -euo pipefail
 
 APP_PATH="${1:?app path required}"
 ARCH="${2:?arch required}"
+if [[ "$ARCH" != "arm64" ]]; then
+  echo "Only Apple Silicon arm64 notarization artifacts are supported (received: $ARCH)." >&2
+  exit 2
+fi
 
 required_vars=(MACOS_CERT_BASE64 MACOS_CERT_PASSWORD MACOS_SIGNING_IDENTITY APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY_BASE64)
 missing=()
