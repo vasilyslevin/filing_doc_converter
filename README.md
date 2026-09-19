@@ -33,7 +33,7 @@ Source Document Converter is a local-first desktop application for preparing PDF
 
 ## Status
 
-The application is functional but remains pre-alpha. Automated tests run on Windows, macOS, and Ubuntu. Native Windows testing has successfully processed a badly scanned 50 MB, 38-page PDF into searchable PDF, Markdown, and JSON.
+The application is functional but remains in active development. Automated tests run on Windows, macOS, and Ubuntu. Native Windows testing has successfully processed a badly scanned 50 MB, 38-page PDF into searchable PDF, Markdown, and JSON.
 
 Use copies of documents and verify all generated material against the original PDF. A native offline smoke test and packaged-application testing remain required before production or court use.
 
