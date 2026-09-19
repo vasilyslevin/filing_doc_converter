@@ -251,7 +251,7 @@ GitHub Actions for `source_doc_converter` runs both commands on Ubuntu, Windows,
 
 ## Packaging direction
 
-The Windows packaging workflow now builds one standard package artifact (`SourceDocumentConverter-Windows-x64`) that bundles the app runtime and Docling tools, while keeping OCRmyPDF, Tesseract OCR, and Ghostscript external.
+The Windows packaging workflow builds separate Full and Lite artifacts: Full bundles the app runtime, Docling tools, OCRmyPDF companion, and pinned Tesseract runtime, while Lite keeps OCR tools external with guided setup.
 
 Before publishing a release, manually run the **Windows development package** workflow for the release tag and confirm the package succeeds.
 

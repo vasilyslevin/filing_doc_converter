@@ -110,6 +110,19 @@ def resolve_ocrmypdf_executable(settings: QSettings | None = None) -> str | None
     if manual is not None:
         return str(manual)
 
+    if is_packaged_application():
+        executable_root = Path(sys.executable).resolve().parent
+        for companion_name in ("ocrmypdf.exe", "ocrmypdf"):
+            companion = executable_root / companion_name
+            if companion.is_file():
+                return str(companion)
+        resources = packaged_resources_directory()
+        if resources is not None:
+            for companion_name in ("ocrmypdf.exe", "ocrmypdf"):
+                companion = resources / companion_name
+                if companion.is_file():
+                    return str(companion)
+
     resolved = find_executable("ocrmypdf", extra_directories=macos_finder_search_paths())
     if resolved:
         return resolved
@@ -243,6 +256,19 @@ def _list_languages(executable: Path, tessdata: Path) -> tuple[str, ...]:
 
 def discover_tesseract_installations() -> tuple[TesseractInstallation, ...]:
     installations: list[TesseractInstallation] = []
+    bundled = find_bundled_tesseract()
+    if bundled is not None:
+        languages = _list_languages(bundled.executable, bundled.tessdata)
+        if languages:
+            installations.append(
+                TesseractInstallation(
+                    label="Bundled Tesseract (recommended)",
+                    source="bundled",
+                    executable=bundled.executable,
+                    tessdata=bundled.tessdata,
+                    languages=languages,
+                )
+            )
     for source, executable in _candidate_system_executables():
         if not executable.is_file():
             continue
@@ -320,7 +346,10 @@ def resolve_tesseract_profile(
         if manual is not None:
             return TesseractRuntimeProfile(manual, "manual")
 
+    bundled = next((item for item in candidates if item.is_bundled), None)
     systems = tuple(item for item in candidates if not item.is_bundled)
+    if mode == "bundled" and bundled is not None:
+        return TesseractRuntimeProfile(bundled, "bundled")
     if mode == "system" and explicit:
         match = next(
             (
@@ -333,6 +362,8 @@ def resolve_tesseract_profile(
         if match is not None:
             return TesseractRuntimeProfile(match, "system")
 
+    if bundled is not None:
+        return TesseractRuntimeProfile(bundled, "automatic")
     if systems:
         return TesseractRuntimeProfile(systems[0], "automatic")
     return None

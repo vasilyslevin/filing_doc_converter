@@ -5,13 +5,10 @@ This folder is not a production release. Keep the folder contents together.
 Executables:
 - SourceDocumentConverter.exe starts the desktop application.
 - docling-tools.exe is the companion used only for explicit model setup.
+- ocrmypdf.exe is the companion used to create searchable PDF output.
 
-OCRmyPDF, Tesseract OCR, and Ghostscript are external dependencies in this package.
-Use Help > System Check > Install Missing OCR Tools to run guided winget setup when available,
-or configure validated executable paths manually.
+Models are not included. Choose a model folder and approve the download through Help > System Check. Document conversion does not automatically download models.
 
-Models are not included. Choose a model folder and approve the download through Help > System Check.
-Document conversion does not automatically download models.
+OCRmyPDF and a pinned UB-Mannheim Tesseract runtime are bundled in this development build. Searchable-PDF output should work on a clean Windows machine without installing Tesseract separately.
 
-Verify generated Markdown and JSON against the original PDF before relying on them.
-The original PDF remains authoritative.
+Verify generated Markdown and JSON against the original PDF before relying on them. The original PDF remains authoritative.
