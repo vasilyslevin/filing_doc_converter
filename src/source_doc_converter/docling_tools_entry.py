@@ -6,6 +6,8 @@ RUNTIME_CHECK_FLAG = "--runtime-check"
 def run_runtime_check() -> int:
     import importlib
 
+    import torch
+    import torchvision
     from docling.document_converter import DocumentConverter
     from pypdf import PdfReader
     from scipy import ndimage
@@ -30,7 +32,14 @@ def run_runtime_check() -> int:
     filtered = ndimage.gaussian_filter1d([1.0, 2.0, 3.0], sigma=0.1)
     if len(filtered) != 3:
         raise RuntimeError("SciPy ndimage runtime check returned an unexpected result.")
+    if not torchvision.extension._has_ops():
+        raise RuntimeError(
+            "Torchvision native operators are unavailable in this runtime; "
+            "packaged _C.pyd or dependent DLLs may be missing."
+        )
 
+    print(f"Torch: {torch.__version__}")
+    print(f"Torchvision: {torchvision.__version__}")
     print(f"AutoImageProcessor: {AutoImageProcessor.__name__}")
     print(f"DocumentConverter: {DocumentConverter.__name__}")
     print(f"PdfReader: {PdfReader.__name__}")
