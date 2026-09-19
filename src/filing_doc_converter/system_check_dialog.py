@@ -5,12 +5,14 @@ from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtGui import QCloseEvent, QColor
 from PySide6.QtWidgets import (
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from filing_doc_converter.dependency_setup import DependencySetupWorker
 from filing_doc_converter.error_dialog import ErrorDetailsDialog
 from filing_doc_converter.model_downloader import ModelDownloadWorker
 from filing_doc_converter.model_management import (
@@ -31,6 +34,28 @@ from filing_doc_converter.system_diagnostics import (
     collect_system_diagnostics,
     installation_guidance,
 )
+
+
+class ActivityDetailsDialog(QDialog):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Setup details")
+        self.resize(760, 420)
+        self.details_edit = QPlainTextEdit()
+        self.details_edit.setReadOnly(True)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout()
+        layout.addWidget(self.details_edit)
+        layout.addWidget(buttons)
+        self.setLayout(layout)
+
+    def append_line(self, line: str) -> None:
+        text = self.details_edit.toPlainText()
+        if text:
+            self.details_edit.setPlainText(f"{text}\n{line}")
+        else:
+            self.details_edit.setPlainText(line)
 
 
 class SystemCheckDialog(QDialog):
@@ -52,12 +77,17 @@ class SystemCheckDialog(QDialog):
         self._model_state: ModelDirectoryState | None = None
         self._download_thread: QThread | None = None
         self._download_worker: ModelDownloadWorker | None = None
+        self._dependency_thread: QThread | None = None
+        self._dependency_worker: DependencySetupWorker | None = None
+        self._details_dialog = ActivityDetailsDialog(self)
 
         self.setWindowTitle("System Check")
-        self.resize(760, 560)
+        self.resize(760, 600)
 
         self.system_label = QLabel()
         self.system_label.setWordWrap(True)
+        self.activity_status_label = QLabel("Status: Ready")
+        self.activity_status_label.setWordWrap(True)
 
         self.component_table = QTableWidget(0, 3)
         self.component_table.setHorizontalHeaderLabels(["Component", "Status", "Details"])
@@ -78,6 +108,29 @@ class SystemCheckDialog(QDialog):
         self.guidance_label.setTextInteractionFlags(
             self.guidance_label.textInteractionFlags()
         )
+
+        dependency_group = QGroupBox("Guided dependency setup")
+        self.setup_dependencies_button = QPushButton("Install Missing Dependencies")
+        self.setup_dependencies_button.clicked.connect(self.start_dependency_setup)
+        self.cancel_setup_button = QPushButton("Cancel Setup")
+        self.cancel_setup_button.setEnabled(False)
+        self.cancel_setup_button.clicked.connect(self.cancel_setup)
+        self.details_button = QPushButton("Show Setup Details")
+        self.details_button.clicked.connect(self._details_dialog.show)
+        dependency_buttons = QHBoxLayout()
+        dependency_buttons.addWidget(self.setup_dependencies_button)
+        dependency_buttons.addWidget(self.cancel_setup_button)
+        dependency_buttons.addWidget(self.details_button)
+        dependency_buttons.addStretch()
+        dependency_layout = QVBoxLayout()
+        dependency_layout.addWidget(
+            QLabel(
+                "Installs missing OCR dependencies in the background. "
+                "Only approved vendor installers may open visible windows."
+            )
+        )
+        dependency_layout.addLayout(dependency_buttons)
+        dependency_group.setLayout(dependency_layout)
 
         model_group = QGroupBox("Local AI models")
         self.model_status_label = QLabel()
@@ -117,8 +170,10 @@ class SystemCheckDialog(QDialog):
 
         layout = QVBoxLayout()
         layout.addWidget(self.system_label)
+        layout.addWidget(self.activity_status_label)
         layout.addWidget(self.component_table)
         layout.addWidget(self.guidance_label)
+        layout.addWidget(dependency_group)
         layout.addWidget(model_group)
         layout.addLayout(buttons)
         self.setLayout(layout)
@@ -135,6 +190,7 @@ class SystemCheckDialog(QDialog):
 
     def refresh(self) -> None:
         self.refresh_button.setEnabled(False)
+        self._set_activity_status("Checking dependencies…")
         try:
             diagnostics = self._diagnostics_provider()
         finally:
@@ -143,6 +199,8 @@ class SystemCheckDialog(QDialog):
         self._diagnostics = diagnostics
         self._populate(diagnostics)
         self.refresh_model_state()
+        if not self._setup_active():
+            self._set_activity_status("Ready")
         self.diagnostics_updated.emit(diagnostics)
 
     def refresh_model_state(self) -> None:
@@ -161,7 +219,7 @@ class SystemCheckDialog(QDialog):
             "Document conversion uses local model files after setup."
         )
         managed = state.source == "environment"
-        active = self._download_thread is not None
+        active = self._download_thread is not None or self._dependency_thread is not None
         self.choose_model_button.setEnabled(not managed and not active)
         self.reset_model_button.setEnabled(
             not managed and state.source == "settings" and not active
@@ -175,6 +233,7 @@ class SystemCheckDialog(QDialog):
             "Clear the saved folder selection without deleting any model files."
         )
         self.download_model_button.setEnabled(not active)
+        self.setup_dependencies_button.setEnabled(not active)
 
     def choose_model_directory(self) -> None:
         state = self._model_state or load_model_directory(self._settings)
@@ -210,13 +269,14 @@ class SystemCheckDialog(QDialog):
         self.start_model_download(state.path)
 
     def start_model_download(self, model_directory: Path) -> None:
-        if self._download_thread is not None:
+        if self._download_thread is not None or self._dependency_thread is not None:
             return
         self._download_thread = QThread(self)
         self._download_worker = self._model_worker_factory(model_directory)
         self._download_worker.moveToThread(self._download_thread)
         self._download_thread.started.connect(self._download_worker.run)
-        self._download_worker.status_changed.connect(self.model_status_label.setText)
+        self._download_worker.status_changed.connect(self._set_activity_status)
+        self._download_worker.details_changed.connect(self._append_setup_detail)
         self._download_worker.completed.connect(self._on_download_completed)
         self._download_worker.failed.connect(self._on_download_failed)
         self._download_worker.cancelled.connect(self._on_download_cancelled)
@@ -224,21 +284,72 @@ class SystemCheckDialog(QDialog):
         self._download_worker.finished.connect(self._download_worker.deleteLater)
         self._download_thread.finished.connect(self._download_thread.deleteLater)
         self._download_thread.finished.connect(self._clear_download_references)
-        self.choose_model_button.setEnabled(False)
-        self.reset_model_button.setEnabled(False)
-        self.download_model_button.setEnabled(False)
-        self.cancel_download_button.setEnabled(True)
-        self.close_button.setEnabled(False)
+        self._set_setup_controls_active(True, model_download=True)
         self._download_thread.start()
 
     def cancel_model_download(self) -> None:
         if self._download_worker is not None:
             self.cancel_download_button.setEnabled(False)
-            self.model_status_label.setText("Cancelling model download...")
+            self._set_activity_status("Canceling model download…")
             self._download_worker.cancel()
+
+    def start_dependency_setup(self) -> None:
+        if self._download_thread is not None or self._dependency_thread is not None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Install missing dependencies?",
+            "This guided setup may run background package installation commands "
+            "for missing OCR dependencies.\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._dependency_thread = QThread(self)
+        self._dependency_worker = DependencySetupWorker(
+            diagnostics_provider=self._diagnostics_provider
+        )
+        self._dependency_worker.moveToThread(self._dependency_thread)
+        self._dependency_thread.started.connect(self._dependency_worker.run)
+        self._dependency_worker.status_changed.connect(self._set_activity_status)
+        self._dependency_worker.details_changed.connect(self._append_setup_detail)
+        self._dependency_worker.completed.connect(self._on_dependency_setup_completed)
+        self._dependency_worker.failed.connect(self._on_dependency_setup_failed)
+        self._dependency_worker.cancelled.connect(self._on_dependency_setup_cancelled)
+        self._dependency_worker.finished.connect(self._dependency_thread.quit)
+        self._dependency_worker.finished.connect(self._dependency_worker.deleteLater)
+        self._dependency_thread.finished.connect(self._dependency_thread.deleteLater)
+        self._dependency_thread.finished.connect(self._clear_dependency_references)
+        self._set_setup_controls_active(True, model_download=False)
+        self._dependency_thread.start()
+
+    def cancel_setup(self) -> None:
+        if self._dependency_worker is not None:
+            self.cancel_setup_button.setEnabled(False)
+            self._set_activity_status("Canceling setup…")
+            self._dependency_worker.cancel()
+
+    def _set_setup_controls_active(self, active: bool, *, model_download: bool) -> None:
+        self.choose_model_button.setEnabled(not active)
+        self.reset_model_button.setEnabled(not active)
+        self.download_model_button.setEnabled(not active)
+        self.setup_dependencies_button.setEnabled(not active)
+        self.cancel_download_button.setEnabled(active and model_download)
+        self.cancel_setup_button.setEnabled(active and not model_download)
+        self.refresh_button.setEnabled(not active)
+        self.save_button.setEnabled(not active)
+        self.close_button.setEnabled(not active)
+
+    def _set_activity_status(self, status: str) -> None:
+        self.activity_status_label.setText(f"Status: {status}")
+
+    def _append_setup_detail(self, line: str) -> None:
+        self._details_dialog.append_line(line)
 
     def _on_download_completed(self) -> None:
         self.refresh_model_state()
+        self._set_activity_status("Completed")
         QMessageBox.information(
             self,
             "Model setup complete",
@@ -246,6 +357,7 @@ class SystemCheckDialog(QDialog):
         )
 
     def _on_download_failed(self, message: str) -> None:
+        self._set_activity_status("Failed")
         ErrorDetailsDialog(
             message,
             self,
@@ -254,16 +366,47 @@ class SystemCheckDialog(QDialog):
         ).exec()
 
     def _on_download_cancelled(self) -> None:
+        self._set_activity_status("Canceled")
         self.model_status_label.setText(
-            "Model download cancelled. Incomplete files will not be treated as ready."
+            "Model download canceled. Incomplete files will not be treated as ready."
         )
 
     def _clear_download_references(self) -> None:
         self._download_worker = None
         self._download_thread = None
-        self.cancel_download_button.setEnabled(False)
-        self.close_button.setEnabled(True)
+        self._set_setup_controls_active(False, model_download=True)
         self.refresh_model_state()
+
+    def _on_dependency_setup_completed(self) -> None:
+        self._set_activity_status("Completed")
+        self.refresh()
+        QMessageBox.information(
+            self,
+            "Dependency setup complete",
+            "Dependency checks finished successfully.",
+        )
+
+    def _on_dependency_setup_failed(self, message: str) -> None:
+        self._set_activity_status("Failed")
+        ErrorDetailsDialog(
+            message,
+            self,
+            title="Dependency setup failed",
+            summary="Guided dependency setup did not complete.",
+        ).exec()
+
+    def _on_dependency_setup_cancelled(self, message: str) -> None:
+        self._set_activity_status("Canceled")
+        self._append_setup_detail(message)
+
+    def _clear_dependency_references(self) -> None:
+        self._dependency_worker = None
+        self._dependency_thread = None
+        self._set_setup_controls_active(False, model_download=False)
+        self.refresh_model_state()
+
+    def _setup_active(self) -> bool:
+        return self._download_thread is not None or self._dependency_thread is not None
 
     def _populate(self, diagnostics: SystemDiagnostics) -> None:
         self.system_label.setText(
@@ -317,11 +460,11 @@ class SystemCheckDialog(QDialog):
         path.write_text(content, encoding="utf-8", newline="\n")
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self._download_thread is not None:
+        if self._setup_active():
             QMessageBox.information(
                 self,
-                "Model download in progress",
-                "Cancel the model download before closing System Check.",
+                "Setup in progress",
+                "Cancel active setup operations before closing System Check.",
             )
             event.ignore()
             return

@@ -52,17 +52,14 @@ def test_command_timeout(monkeypatch) -> None:
 
 
 def test_tesseract_languages(monkeypatch) -> None:
-    monkeypatch.setattr(
-        system_diagnostics,
-        "find_bundled_tesseract",
-        lambda: None,
-    )
+    monkeypatch.setattr(system_diagnostics, "discover_tesseract_installations", lambda: ())
+    monkeypatch.setattr(system_diagnostics, "resolve_tesseract_profile", lambda **kwargs: None)
     monkeypatch.setattr(
         system_diagnostics,
         "resolve_tesseract_executable",
         lambda: ("/tools/tesseract", "system"),
     )
-    monkeypatch.setattr(system_diagnostics, "build_ocr_environment", dict)
+    monkeypatch.setattr(system_diagnostics, "build_ocr_environment", lambda profile: {})
     responses = iter(
         [
             (True, "tesseract 5.5.1\n", None),
@@ -83,7 +80,7 @@ def test_tesseract_languages(monkeypatch) -> None:
 
 
 def test_packaged_missing_tesseract_bundle_has_specific_error(monkeypatch) -> None:
-    monkeypatch.setattr(system_diagnostics, "find_bundled_tesseract", lambda: None)
+    monkeypatch.setattr(system_diagnostics, "discover_tesseract_installations", lambda: ())
     monkeypatch.setattr(system_diagnostics, "resolve_tesseract_executable", lambda: (None, "missing"))
     monkeypatch.setattr(system_diagnostics, "is_packaged_application", lambda: True)
     monkeypatch.setattr(system_diagnostics.platform, "system", lambda: "Windows")

@@ -5,21 +5,43 @@ from filing_doc_converter import model_downloader
 from filing_doc_converter.model_downloader import ModelDownloadWorker
 
 
-class SuccessfulProcess:
-    returncode = 0
+class FakeStdout:
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = list(lines)
 
-    def communicate(self, timeout=None):
-        return ("download complete", None)
+    def readline(self) -> str:
+        if self._lines:
+            return self._lines.pop(0)
+        return ""
+
+    def read(self) -> str:
+        return "".join(self._lines)
+
+
+class FakeProcess:
+    def __init__(self, lines: list[str], returncode: int = 0, cancel_on_read: bool = False) -> None:
+        self.returncode = returncode
+        self.stdout = FakeStdout(lines)
+        self._terminated = False
+        self._cancel_on_read = cancel_on_read
+        self._calls = 0
 
     def poll(self):
+        self._calls += 1
+        if self._cancel_on_read and self._calls == 1:
+            return None
         return self.returncode
 
-
-class FailedProcess(SuccessfulProcess):
-    returncode = 1
-
     def communicate(self, timeout=None):
-        return ("safe failure detail", None)
+        if timeout == 5 and self._cancel_on_read and not self._terminated:
+            raise subprocess.TimeoutExpired("docling-tools", timeout=timeout)
+        return ("", "")
+
+    def terminate(self):
+        self._terminated = True
+
+    def kill(self):
+        self.returncode = -9
 
 
 def test_worker_uses_safe_subprocess_arguments(monkeypatch, qtbot, tmp_path: Path) -> None:
@@ -29,7 +51,7 @@ def test_worker_uses_safe_subprocess_arguments(monkeypatch, qtbot, tmp_path: Pat
     def fake_popen(command, **kwargs):
         captured["command"] = command
         captured["kwargs"] = kwargs
-        return SuccessfulProcess()
+        return FakeProcess(["done\n"], 0)
 
     monkeypatch.setattr(model_downloader.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(model_downloader, "mark_models_ready", marked.append)
@@ -56,7 +78,7 @@ def test_worker_reports_downloader_failure(monkeypatch, qtbot, tmp_path: Path) -
     monkeypatch.setattr(
         model_downloader.subprocess,
         "Popen",
-        lambda *args, **kwargs: FailedProcess(),
+        lambda *args, **kwargs: FakeProcess(["safe failure detail\n"], 1),
     )
     worker = ModelDownloadWorker(tmp_path / "models", executable="docling-tools")
     failures = []
@@ -79,37 +101,15 @@ def test_worker_can_be_cancelled_before_start(qtbot, tmp_path: Path) -> None:
 
 
 def test_worker_terminates_a_cancelled_process(monkeypatch, qtbot, tmp_path: Path) -> None:
-    class HangingProcess:
-        returncode = None
+    process = FakeProcess([], 0, cancel_on_read=True)
 
-        def __init__(self):
-            self.terminated = False
-            self.communications = 0
+    def fake_popen(*args, **kwargs):
+        worker.cancel()
+        return process
 
-        def poll(self):
-            return None
-
-        def terminate(self):
-            self.terminated = True
-
-        def kill(self):
-            self.returncode = -9
-
-        def communicate(self, timeout=None):
-            self.communications += 1
-            if self.communications == 1:
-                worker.cancel()
-                raise subprocess.TimeoutExpired("docling-tools", timeout)
-            return ("", None)
-
-    process = HangingProcess()
-    monkeypatch.setattr(
-        model_downloader.subprocess,
-        "Popen",
-        lambda *args, **kwargs: process,
-    )
+    monkeypatch.setattr(model_downloader.subprocess, "Popen", fake_popen)
     worker = ModelDownloadWorker(tmp_path / "models", executable="docling-tools")
 
     worker.run()
 
-    assert process.terminated
+    assert process._terminated

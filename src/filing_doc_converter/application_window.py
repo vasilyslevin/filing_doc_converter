@@ -6,10 +6,17 @@ from PySide6.QtCore import QElapsedTimer, QSettings, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
+    QFileDialog,
     QHBoxLayout,
+    QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QVBoxLayout,
+)
+from PySide6.QtWidgets import (
+    QListWidgetItem as QtListWidgetItem,
 )
 
 from filing_doc_converter.docling_runtime import (
@@ -23,6 +30,17 @@ from filing_doc_converter.model_management import (
     ModelDirectoryState,
     load_model_directory,
 )
+from filing_doc_converter.ocr_runtime import (
+    TESSERACT_PROFILE_MODE_SETTING,
+    TESSERACT_PROFILE_PATH_SETTING,
+    TesseractInstallation,
+    discover_tesseract_installations,
+    load_language_selection,
+    resolve_tesseract_profile,
+    save_language_selection,
+    validate_tesseract_executable,
+)
+from filing_doc_converter.ocr_worker import ProcessingWorker
 from filing_doc_converter.system_check_dialog import SystemCheckDialog
 from filing_doc_converter.system_diagnostics import (
     OutputAvailability,
@@ -62,6 +80,8 @@ class ApplicationWindow(MainWindow):
         self._processing_timer.timeout.connect(self._refresh_processing_text)
         self._processing_stage = "Preparing"
         self._processing_file = ""
+        self._tesseract_installations: tuple[TesseractInstallation, ...] = ()
+        self._active_tesseract_languages: tuple[str, ...] = ()
         self.queue.itemClicked.connect(self.show_queue_item_details)
         self._add_docling_performance_controls()
 
@@ -76,6 +96,7 @@ class ApplicationWindow(MainWindow):
 
         self.refresh_output_availability()
         self._update_open_output_button()
+        self.refresh_tesseract_runtime()
 
     def _setting_bool(self, key: str, default: bool) -> bool:
         value = self._settings.value(key, default)
@@ -117,9 +138,26 @@ class ApplicationWindow(MainWindow):
         options_row.addWidget(self.table_structure_checkbox)
         options_row.addWidget(self.cpu_only_checkbox)
         options_row.addStretch()
+        tesseract_layout = QVBoxLayout()
+        tesseract_row = QHBoxLayout()
+        self.tesseract_profile_combo = QComboBox()
+        self.tesseract_profile_combo.currentIndexChanged.connect(self._on_tesseract_profile_changed)
+        self.browse_tesseract_button = QPushButton("Browse Tesseract…")
+        self.browse_tesseract_button.clicked.connect(self._browse_tesseract)
+        self.reset_tesseract_button = QPushButton("Reset to Automatic")
+        self.reset_tesseract_button.clicked.connect(self._reset_tesseract_profile)
+        tesseract_row.addWidget(self.tesseract_profile_combo)
+        tesseract_row.addWidget(self.browse_tesseract_button)
+        tesseract_row.addWidget(self.reset_tesseract_button)
+        self.tesseract_languages_list = QListWidget()
+        self.tesseract_languages_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self.tesseract_languages_list.itemSelectionChanged.connect(self._save_selected_languages)
+        tesseract_layout.addLayout(tesseract_row)
+        tesseract_layout.addWidget(self.tesseract_languages_list)
         output_parent = self.markdown_checkbox.parentWidget()
         if output_parent is not None and output_parent.layout() is not None:
             output_parent.layout().addLayout(options_row)
+            output_parent.layout().addLayout(tesseract_layout)
 
     def _save_processing_preferences(self) -> None:
         self._settings.setValue(DOCLING_OCR_SETTING, self.docling_ocr_checkbox.isChecked())
@@ -132,6 +170,99 @@ class ApplicationWindow(MainWindow):
             self.cpu_only_checkbox.isChecked(),
         )
         self._settings.sync()
+
+    def refresh_tesseract_runtime(self) -> None:
+        self._tesseract_installations = discover_tesseract_installations()
+        previous_mode = str(self._settings.value(TESSERACT_PROFILE_MODE_SETTING, "automatic"))
+        previous_path = str(self._settings.value(TESSERACT_PROFILE_PATH_SETTING, ""))
+        self.tesseract_profile_combo.blockSignals(True)
+        self.tesseract_profile_combo.clear()
+        self.tesseract_profile_combo.addItem("Automatic", ("automatic", ""))
+        for installation in self._tesseract_installations:
+            if installation.is_bundled:
+                self.tesseract_profile_combo.addItem(
+                    "Bundled Tesseract (recommended)",
+                    ("bundled", str(installation.executable)),
+                )
+            else:
+                self.tesseract_profile_combo.addItem(
+                    installation.label,
+                    ("system", str(installation.executable)),
+                )
+        selected_index = 0
+        for index in range(self.tesseract_profile_combo.count()):
+            mode, path = self.tesseract_profile_combo.itemData(index)
+            if mode == previous_mode and (not previous_path or path == previous_path):
+                selected_index = index
+                break
+        self.tesseract_profile_combo.setCurrentIndex(selected_index)
+        self.tesseract_profile_combo.blockSignals(False)
+        self._refresh_tesseract_languages()
+
+    def _refresh_tesseract_languages(self) -> None:
+        profile = resolve_tesseract_profile(
+            self._settings,
+            installations=self._tesseract_installations,
+        )
+        self.tesseract_languages_list.clear()
+        self._active_tesseract_languages = profile.installation.languages if profile else ()
+        selected = set(load_language_selection(self._settings))
+        for language in self._active_tesseract_languages:
+            item = QtListWidgetItem(language)
+            self.tesseract_languages_list.addItem(item)
+            item.setSelected(language in selected)
+        if self.tesseract_languages_list.count() and not self.tesseract_languages_list.selectedItems():
+            first = self.tesseract_languages_list.item(0)
+            if first is not None:
+                first.setSelected(True)
+        self._save_selected_languages()
+
+    def _on_tesseract_profile_changed(self) -> None:
+        data = self.tesseract_profile_combo.currentData()
+        if not data:
+            return
+        mode, path = data
+        self._settings.setValue(TESSERACT_PROFILE_MODE_SETTING, mode)
+        self._settings.setValue(TESSERACT_PROFILE_PATH_SETTING, path)
+        self._settings.sync()
+        self._refresh_tesseract_languages()
+
+    def _browse_tesseract(self) -> None:
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Tesseract executable",
+            "",
+            "Executables (*.exe);;All files (*)",
+        )
+        if not file_path:
+            return
+        installation = validate_tesseract_executable(file_path)
+        if installation is None:
+            QMessageBox.warning(
+                self,
+                "Invalid Tesseract selection",
+                "The selected executable is not a validated Tesseract installation with "
+                "a complete tessdata root (configs/hocr required).",
+            )
+            return
+        self._settings.setValue(TESSERACT_PROFILE_MODE_SETTING, "manual")
+        self._settings.setValue(TESSERACT_PROFILE_PATH_SETTING, str(installation.executable))
+        self._settings.sync()
+        self.refresh_tesseract_runtime()
+
+    def _reset_tesseract_profile(self) -> None:
+        self._settings.setValue(TESSERACT_PROFILE_MODE_SETTING, "automatic")
+        self._settings.remove(TESSERACT_PROFILE_PATH_SETTING)
+        self._settings.sync()
+        self.refresh_tesseract_runtime()
+
+    def _save_selected_languages(self) -> None:
+        selected = tuple(
+            item.text()
+            for item in self.tesseract_languages_list.selectedItems()
+            if item.text() in self._active_tesseract_languages
+        )
+        save_language_selection(selected or ("eng",), self._settings)
 
     def set_output_directory(self, path: Path) -> None:
         super().set_output_directory(path)
@@ -196,6 +327,7 @@ class ApplicationWindow(MainWindow):
         dialog.diagnostics_updated.connect(self.apply_diagnostics)
         dialog.exec()
         self.refresh_output_availability()
+        self.refresh_tesseract_runtime()
 
     def show_queue_item_details(self, item: QListWidgetItem) -> None:
         if not item.text().startswith("Failed:"):
@@ -211,6 +343,30 @@ class ApplicationWindow(MainWindow):
             "1" if self.table_structure_checkbox.isChecked() else "0"
         )
         os.environ[DOCLING_CPU_ONLY_ENV] = "1" if self.cpu_only_checkbox.isChecked() else "0"
+        if self.searchable_pdf_checkbox.isChecked() and self._pdf_paths and self.output_directory is not None:
+            profile = resolve_tesseract_profile(
+                self._settings,
+                installations=self._tesseract_installations,
+            )
+            if profile is None:
+                QMessageBox.critical(
+                    self,
+                    "Tesseract OCR unavailable",
+                    "No validated Tesseract installation is available. Open Help > System Check "
+                    "and run dependency setup or select a valid installation.",
+                )
+                return
+            selected_languages = load_language_selection(self._settings)
+            missing = [lang for lang in selected_languages if lang not in profile.installation.languages]
+            if missing:
+                QMessageBox.critical(
+                    self,
+                    "Selected OCR language unavailable",
+                    "The active Tesseract installation does not provide: "
+                    + ", ".join(missing)
+                    + ". Select available languages before processing.",
+                )
+                return
         self._processing_stage = "Preparing"
         self._processing_file = ""
         self._processing_clock.start()
@@ -222,6 +378,32 @@ class ApplicationWindow(MainWindow):
             return
         if self._worker is not None:
             self._worker.stage_changed.connect(self._on_processing_stage_changed)
+
+    def _create_processing_worker(
+        self,
+        *,
+        create_searchable_pdf: bool,
+        create_markdown: bool,
+        create_json: bool,
+        executable: str | None,
+    ) -> ProcessingWorker:
+        if self.output_directory is None:
+            raise RuntimeError("Output directory is required before starting processing.")
+        profile = resolve_tesseract_profile(
+            self._settings,
+            installations=self._tesseract_installations,
+        )
+        selected_languages = load_language_selection(self._settings)
+        return ProcessingWorker(
+            tuple(self._pdf_paths),
+            self.output_directory,
+            create_searchable_pdf=create_searchable_pdf,
+            create_markdown=create_markdown,
+            create_json=create_json,
+            language="+".join(selected_languages),
+            executable=executable,
+            tesseract_profile=profile,
+        )
 
     def open_output_directory(self) -> None:
         output_directory = self.output_directory

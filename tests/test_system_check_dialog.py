@@ -48,6 +48,13 @@ def test_refresh_emits_updated_diagnostics(qtbot) -> None:
     assert reports == [sample_diagnostics()]
 
 
+def test_dialog_shows_persistent_status_line(qtbot) -> None:
+    dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
+    qtbot.addWidget(dialog)
+
+    assert dialog.activity_status_label.text().startswith("Status:")
+
+
 def test_save_report_writes_privacy_safe_text(qtbot, tmp_path: Path) -> None:
     dialog = SystemCheckDialog(diagnostics_provider=sample_diagnostics)
     qtbot.addWidget(dialog)

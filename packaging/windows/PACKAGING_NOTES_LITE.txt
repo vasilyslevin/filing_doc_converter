@@ -1,0 +1,16 @@
+Filing Document Converter - unsigned development build (Lite)
+
+This folder is not a production release. Keep the folder contents together.
+
+Executables:
+- FilingDocumentConverter.exe starts the desktop application.
+- docling-tools.exe is the companion used only for explicit model setup.
+
+OCRmyPDF and Tesseract are intentionally not bundled in the Lite package.
+Use Help > System Check > Install Missing Dependencies to run guided setup.
+
+Models are not included. Choose a model folder and approve the download through
+Help > System Check. Document conversion does not automatically download models.
+
+Verify generated Markdown and JSON against the original PDF before relying on them.
+The original PDF remains authoritative.

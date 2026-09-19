@@ -73,6 +73,8 @@ def test_bundle_script_uses_7zip_extraction_with_timeout() -> None:
     assert "failed (exit code $ExitCode). Output:" in script
     assert "foreach ($Language in $BundledLanguages)" in script
     assert "Copy-Item (Join-Path $Tessdata \"$Language.traineddata\") $DestinationTessdata -Force" in script
+    assert "Copy-Item $SourceConfigs (Join-Path $DestinationTessdata \"configs\") -Recurse -Force" in script
+    assert "Join-Path $DestinationTessdata \"configs\\hocr\"" in script
 
 
 def test_windows_build_hashes_full_tesseract_payload() -> None:
@@ -82,6 +84,30 @@ def test_windows_build_hashes_full_tesseract_payload() -> None:
     assert "No bundled tesseract files were found for hashing." in build_script
     assert "$HashTargets += $RelativeTesseractFiles" in build_script
     assert "$HashTargets = $HashTargets | Sort-Object -Unique" in build_script
+
+
+def test_windows_workflow_runs_hocr_smoke_test() -> None:
+    workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "configs\\\\hocr" in workflow
+    assert "tesseract-smoke.pgm" in workflow
+    assert "& $BundledTesseract $SmokeInput $SmokeOutBase -l eng hocr" in workflow
+    assert "$SmokeOutBase.hocr" in workflow
+    assert "hOCR smoke output is empty" in workflow
+
+
+def test_windows_build_supports_lite_package() -> None:
+    build_script = (ROOT / "packaging" / "windows" / "build.ps1").read_text(encoding="utf-8")
+    workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
+    notes = (ROOT / "packaging" / "windows" / "PACKAGING_NOTES_LITE.txt").read_text(
+        encoding="utf-8"
+    )
+
+    assert '[ValidateSet("Full", "Lite")]' in build_script
+    assert '$PackageFlavor = "Full"' in build_script
+    assert "build.ps1 -PackageFlavor Lite" in workflow
+    assert "FilingDocumentConverter-Windows-x64-Lite" in workflow
+    assert "Install Missing Dependencies" in notes
 
 
 def test_tesseract_lock_contains_version_and_checksum() -> None:

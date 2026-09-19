@@ -1,10 +1,17 @@
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QSettings, QUrl
 
 from filing_doc_converter import application_window
+from filing_doc_converter import main_window as base_main_window
 from filing_doc_converter.application_window import ApplicationWindow
 from filing_doc_converter.model_management import ModelDirectoryState
+from filing_doc_converter.ocr_runtime import (
+    TESSERACT_LANGUAGES_SETTING,
+    TESSERACT_PROFILE_MODE_SETTING,
+    TESSERACT_PROFILE_PATH_SETTING,
+    TesseractInstallation,
+)
 from filing_doc_converter.system_diagnostics import (
     ComponentStatus,
     OutputAvailability,
@@ -18,6 +25,22 @@ def ready_models() -> ModelDirectoryState:
 
 def missing_models() -> ModelDirectoryState:
     return ModelDirectoryState(Path("models"), "settings", False)
+
+
+def sample_installation(tmp_path: Path, *, source: str = "bundled") -> TesseractInstallation:
+    executable = tmp_path / source / ("tesseract.exe" if source == "bundled" else "tesseract")
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.touch()
+    tessdata = executable.parent / "tessdata" / "configs"
+    tessdata.mkdir(parents=True)
+    (tessdata / "hocr").write_text("", encoding="utf-8")
+    return TesseractInstallation(
+        label="Bundled Tesseract (recommended)" if source == "bundled" else "System PATH",
+        source=source,
+        executable=executable,
+        tessdata=executable.parent / "tessdata",
+        languages=("eng", "spa"),
+    )
 
 
 def test_unavailable_components_disable_outputs(qtbot) -> None:
@@ -128,3 +151,88 @@ def test_open_output_button_waits_for_existing_folder(qtbot, tmp_path: Path) -> 
     window.set_output_directory(tmp_path / "not-created")
 
     assert not window.open_output_button.isEnabled()
+
+
+def test_tesseract_selection_persists_and_resets(monkeypatch, qtbot, tmp_path: Path) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+
+    window.tesseract_profile_combo.setCurrentIndex(1)
+    assert str(settings.value(TESSERACT_PROFILE_MODE_SETTING, "")) == "system"
+    assert str(settings.value(TESSERACT_PROFILE_PATH_SETTING, "")) == str(installation.executable)
+
+    window._reset_tesseract_profile()
+    assert str(settings.value(TESSERACT_PROFILE_MODE_SETTING, "")) == "automatic"
+    assert str(settings.value(TESSERACT_PROFILE_PATH_SETTING, "")) == ""
+
+
+def test_missing_selected_language_blocks_processing(monkeypatch, qtbot, tmp_path: Path) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    constrained = TesseractInstallation(
+        label=installation.label,
+        source=installation.source,
+        executable=installation.executable,
+        tessdata=installation.tessdata,
+        languages=("eng",),
+    )
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (constrained,),
+    )
+    settings = QSettings(str(tmp_path / "settings2.ini"), QSettings.Format.IniFormat)
+    settings.setValue(TESSERACT_LANGUAGES_SETTING, "eng+spa")
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    settings.setValue(TESSERACT_LANGUAGES_SETTING, "eng+spa")
+    warnings = []
+    monkeypatch.setattr(application_window.QMessageBox, "critical", lambda *args, **kwargs: warnings.append(args[2]))
+    monkeypatch.setattr(base_main_window, "find_ocrmypdf", lambda: "/tools/ocrmypdf")
+    window.queue.addItem(str(tmp_path / "filing.pdf"))
+    window._pdf_paths.append(tmp_path / "filing.pdf")
+    window.set_output_directory(tmp_path / "out")
+
+    window.start_processing()
+
+    assert warnings
+    assert "does not provide" in warnings[0]
+
+
+def test_selected_languages_are_passed_to_worker(monkeypatch, qtbot, tmp_path: Path) -> None:
+    installation = sample_installation(tmp_path, source="path")
+    monkeypatch.setattr(
+        application_window,
+        "discover_tesseract_installations",
+        lambda: (installation,),
+    )
+    settings = QSettings(str(tmp_path / "settings3.ini"), QSettings.Format.IniFormat)
+    settings.setValue(TESSERACT_LANGUAGES_SETTING, "eng+spa")
+    window = ApplicationWindow(
+        availability_provider=lambda: OutputAvailability(True, True),
+        settings=settings,
+    )
+    qtbot.addWidget(window)
+    window._pdf_paths.append(tmp_path / "filing.pdf")
+    window.set_output_directory(tmp_path / "out")
+
+    worker = window._create_processing_worker(
+        create_searchable_pdf=True,
+        create_markdown=False,
+        create_json=False,
+        executable="/tools/ocrmypdf",
+    )
+
+    assert worker._language == "eng+spa"

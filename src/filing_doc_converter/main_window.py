@@ -121,6 +121,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Ready")
+        self.activity_label = QLabel("Activity: Ready")
 
         self.process_button = QPushButton("Process Documents")
         self.process_button.setEnabled(False)
@@ -143,6 +144,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(queue_controls)
         layout.addWidget(self.queue)
         layout.addWidget(self.output_group)
+        layout.addWidget(self.activity_label)
         layout.addLayout(action_row)
 
         container = QWidget()
@@ -259,12 +261,11 @@ class MainWindow(QMainWindow):
         self.cancel_button.setEnabled(True)
         self.progress_bar.setRange(0, len(self._pdf_paths))
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Starting OCR...")
+        self.progress_bar.setFormat("Preparing…")
+        self._set_activity("Preparing")
 
         self._thread = QThread(self)
-        self._worker = ProcessingWorker(
-            tuple(self._pdf_paths),
-            self._output_directory,
+        self._worker = self._create_processing_worker(
             create_searchable_pdf=create_searchable_pdf,
             create_markdown=create_markdown,
             create_json=create_json,
@@ -285,11 +286,13 @@ class MainWindow(QMainWindow):
     def cancel_processing(self) -> None:
         if self._worker is not None:
             self.cancel_button.setEnabled(False)
-            self.progress_bar.setFormat("Cancelling...")
+            self.progress_bar.setFormat("Canceling…")
+            self._set_activity("Canceling")
             self._worker.cancel()
 
     def _on_file_started(self, index: int, total: int, filename: str) -> None:
         self.progress_bar.setFormat(f"Processing {index} of {total}: {filename}")
+        self._set_activity(f"Processing {filename}")
         self.statusBar().showMessage(f"Processing {filename}")
 
     def _on_file_succeeded(self, input_path: str, output_path: str) -> None:
@@ -302,6 +305,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(self._completed_count)
         self._processing_errors.append(error)
         self._mark_queue_item(Path(input_path), False, error)
+        self._set_activity(f"Failed {Path(input_path).name}")
 
     def _on_processing_finished(self, cancelled: bool, succeeded: int, failed: int) -> None:
         self._processing = False
@@ -310,12 +314,14 @@ class MainWindow(QMainWindow):
         self.update_process_button()
 
         if cancelled:
-            self.progress_bar.setFormat("Cancelled")
-            self.statusBar().showMessage("Processing cancelled")
+            self.progress_bar.setFormat("Canceled")
+            self._set_activity("Canceled")
+            self.statusBar().showMessage("Processing canceled")
             return
 
         self.progress_bar.setValue(self.progress_bar.maximum())
         self.progress_bar.setFormat(f"Completed: {succeeded} succeeded, {failed} failed")
+        self._set_activity("Completed" if failed == 0 else "Completed with failures")
         self.statusBar().showMessage("Document processing complete")
         if failed:
             QMessageBox.warning(
@@ -362,6 +368,29 @@ class MainWindow(QMainWindow):
         count = len(self._pdf_paths)
         if count == 0:
             message = "Add one or more PDF files"
+            self._set_activity("Ready")
         else:
             message = f"{count} PDF file{'s' if count != 1 else ''} queued"
         self.statusBar().showMessage(message)
+
+    def _set_activity(self, value: str) -> None:
+        self.activity_label.setText(f"Activity: {value}")
+
+    def _create_processing_worker(
+        self,
+        *,
+        create_searchable_pdf: bool,
+        create_markdown: bool,
+        create_json: bool,
+        executable: str | None,
+    ) -> ProcessingWorker:
+        if self._output_directory is None:
+            raise RuntimeError("Output directory is required before starting processing.")
+        return ProcessingWorker(
+            tuple(self._pdf_paths),
+            self._output_directory,
+            create_searchable_pdf=create_searchable_pdf,
+            create_markdown=create_markdown,
+            create_json=create_json,
+            executable=executable,
+        )

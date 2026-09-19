@@ -14,6 +14,7 @@ Filing Document Converter is a local-first desktop application for converting le
 - Original-file and existing-output protection.
 - Stable output names and PDF page-break markers.
 - System Check dialog with component versions and OCR languages.
+- Guided dependency setup with one-line status and copyable setup details.
 - Explicit local-model setup and download consent.
 - Configurable local model directory.
 - Offline-by-default Docling conversion using prefetched artifacts.
@@ -120,6 +121,10 @@ The model setup action runs an argument list equivalent to:
 docling-tools models download -o <selected-directory>
 ```
 
+System Check keeps a persistent in-window `Status:` line for dependency checks, guided setup, and model downloads. Use **Show Setup Details** to review full sanitized command output and copy it for troubleshooting.
+
+Searchable-PDF OCR now uses explicit Tesseract runtime profiles. The app can use a validated bundled runtime (Full package), a validated system installation, or a validated manual executable selection. The active profile contributes both the executable and complete tessdata root for each OCR subprocess.
+
 It may connect to model-hosting services used by Docling and its OCR dependencies, including Hugging Face or ModelScope. Those services may receive ordinary connection metadata such as IP address, request time, requested model path, and client metadata.
 
 The downloader is not given queued document paths, document filenames, document content, extracted text, or generated outputs. Model setup and document conversion are separate operations.
@@ -178,12 +183,15 @@ The System Check reports:
 - Application, operating-system, architecture, Python, and PySide6 versions.
 - OCRmyPDF availability and version.
 - Tesseract source (bundled or system), version, and installed OCR languages.
+- Validated Tesseract installations discovered from bundled, PATH, and documented Windows install locations.
 - Docling availability and version.
 - Local model readiness.
 - Whether the model directory is selected, default, or managed by an environment setting.
 - Platform-specific installation guidance.
 
 The model path is visible in the interactive dialog so the user can verify it. Saved diagnostic reports include only model readiness and offline-mode status; they do not intentionally include the model path, usernames, hostnames, home-directory paths, queued document paths, output paths, environment variables, or document content.
+
+In the main window, OCR languages are selected from the active Tesseract installation. Selected languages are persisted and passed to OCRmyPDF as `eng+spa` style values. If any selected language is unavailable in the active runtime, processing is blocked with guidance before document processing begins.
 
 ## Offline smoke test
 
@@ -212,6 +220,8 @@ GitHub Actions runs both commands on Ubuntu, Windows, and macOS. Tests mock opti
 ## Packaging direction
 
 The Windows packaging workflow now bundles a pinned UB-Mannheim Tesseract runtime (including `eng` and `osd` language data) and verifies it during build and smoke test. See `packaging/windows/TESSERACT_BUNDLING.md` for source pinning, checksum refresh, and local verification steps.
+
+The workflow also builds a **Lite** Windows package that excludes OCRmyPDF and bundled Tesseract. The Lite package relies on guided dependency setup from **Help > System Check**.
 
 ## Privacy and security
 

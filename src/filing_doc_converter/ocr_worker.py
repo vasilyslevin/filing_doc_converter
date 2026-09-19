@@ -10,6 +10,7 @@ from filing_doc_converter.ocr_pipeline import (
     run_docling,
     run_ocr,
 )
+from filing_doc_converter.ocr_runtime import TesseractRuntimeProfile
 
 
 class ProcessingWorker(QObject):
@@ -29,6 +30,7 @@ class ProcessingWorker(QObject):
         create_json: bool,
         language: str = "eng",
         executable: str | None = None,
+        tesseract_profile: TesseractRuntimeProfile | None = None,
     ) -> None:
         super().__init__()
         self._input_paths = input_paths
@@ -38,6 +40,7 @@ class ProcessingWorker(QObject):
         self._create_json = create_json
         self._language = language
         self._executable = executable
+        self._tesseract_profile = tesseract_profile
         self._cancel_event = Event()
 
     @Slot()
@@ -63,6 +66,7 @@ class ProcessingWorker(QObject):
                         self._output_directory,
                         language=self._language,
                         executable=self._executable,
+                        tesseract_profile=self._tesseract_profile,
                         cancel_event=self._cancel_event,
                     )
                     docling_input = ocr_result.output_path

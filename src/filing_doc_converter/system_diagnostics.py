@@ -11,10 +11,12 @@ from filing_doc_converter import __version__
 from filing_doc_converter.model_management import is_packaged_application, load_model_directory
 from filing_doc_converter.ocr_runtime import (
     build_ocr_environment,
-    find_bundled_tesseract,
+    discover_tesseract_installations,
     resolve_ocrmypdf_executable,
     resolve_tesseract_executable,
+    resolve_tesseract_profile,
 )
+from filing_doc_converter.subprocess_utils import background_subprocess_kwargs
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,7 @@ def _run_command(
             errors="replace",
             timeout=timeout,
             env=dict(env) if env is not None else None,
+            **background_subprocess_kwargs(),
         )
     except subprocess.TimeoutExpired:
         return False, "", "Command timed out"
@@ -148,7 +151,8 @@ def check_ocrmypdf() -> ComponentStatus:
 
 
 def check_tesseract() -> ComponentStatus:
-    bundled = find_bundled_tesseract()
+    installations = discover_tesseract_installations()
+    profile = resolve_tesseract_profile(installations=installations)
     executable, source = resolve_tesseract_executable()
     if executable is None:
         packaged_windows = is_packaged_application() and platform.system() == "Windows"
@@ -168,7 +172,7 @@ def check_tesseract() -> ComponentStatus:
 
     succeeded, output, error = _run_command(
         [executable, "--version"],
-        env=build_ocr_environment(),
+        env=build_ocr_environment(profile),
     )
     if not succeeded:
         return ComponentStatus(
@@ -182,7 +186,7 @@ def check_tesseract() -> ComponentStatus:
 
     languages_ok, languages_output, languages_error = _run_command(
         [executable, "--list-langs"],
-        env=build_ocr_environment(),
+        env=build_ocr_environment(profile),
     )
     languages = ()
     if languages_ok:
@@ -190,8 +194,13 @@ def check_tesseract() -> ComponentStatus:
         languages = tuple(lines[1:] if lines and "available languages" in lines[0].lower() else lines)
 
     details_list = [f"Source: {source}"]
-    if bundled is not None:
+    if source == "bundled":
         details_list.append("Bundled tessdata: tools/tesseract/tessdata")
+    if installations:
+        details_list.append(f"Validated installs: {len(installations)}")
+        details_list.append(
+            "Installations: " + ", ".join(installation.label for installation in installations)
+        )
     if languages:
         details_list.append(f"Languages: {', '.join(languages)}")
     return ComponentStatus(
